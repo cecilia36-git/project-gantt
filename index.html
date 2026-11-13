@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>專案甘特圖管理</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: Inter, "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+    .field { width:100%; border:1px solid #cbd5e1; border-radius:.5rem; padding:.35rem .55rem; background:white; outline:none; font-size:.82rem; }
+    .field:focus { border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.12); }
+    .field:disabled { background:#f1f5f9; color:#64748b; }
+    .lbl { display:block; font-size:.68rem; font-weight:600; color:#64748b; margin-bottom:.1rem; }
+    .btn { border-radius:.55rem; padding:.42rem .85rem; font-weight:600; font-size:.8rem; transition:.15s; white-space:nowrap; }
+    .btn:disabled { opacity:.55; cursor:wait; }
+    .btn-primary { background:#4f46e5; color:white; } .btn-primary:hover { background:#4338ca; }
+    .btn-secondary { background:#e2e8f0; color:#334155; } .btn-secondary:hover { background:#cbd5e1; }
+    .btn-danger { background:#fee2e2; color:#b91c1c; } .btn-danger:hover { background:#fecaca; }
+    .btn-sm { padding:.25rem .6rem; font-size:.75rem; }
+    .seg { display:inline-flex; background:#e2e8f0; border-radius:.55rem; padding:2px; }
+    .seg button { padding:.22rem .65rem; font-size:.75rem; font-weight:600; border-radius:.45rem; color:#475569; }
+    .seg button.on { background:white; color:#4338ca; box-shadow:0 1px 2px rgba(0,0,0,.08); }
+    .status-pill { display:inline-flex; align-items:center; border-radius:999px; padding:.12rem .5rem; font-size:.7rem; font-weight:700; white-space:nowrap; }
+    .st-done { background:#dcfce7; color:#166534; } .st-doing { background:#dbeafe; color:#1d4ed8; }
+    .st-wait { background:#fef3c7; color:#92400e; } .st-pause { background:#e2e8f0; color:#475569; }
+    .st-todo { background:#f1f5f9; color:#64748b; } .st-late { background:#fee2e2; color:#b91c1c; }
+    .modal-backdrop { background:rgba(15,23,42,.55); }
+    .detail-content { overflow-wrap:anywhere; }
+    .detail-content img, .ql-editor img { max-width:100%; height:auto; border-radius:.5rem; }
+    .quill-box { resize:vertical; overflow:auto; min-height:160px; height:240px; border:1px solid #cbd5e1; border-radius:.6rem; display:flex; flex-direction:column; background:#fff; }
+    .quill-box .ql-toolbar { position:sticky; top:0; z-index:2; background:#f8fafc; border:0; border-bottom:1px solid #e2e8f0; }
+    .quill-box .ql-container { border:0; flex:1; min-height:0; font-size:14px; }
+    .quill-box .ql-editor { line-height:1.6; padding:.5rem .75rem; }
+    .hist-item { border-left:3px solid #a5b4fc; background:#f8fafc; border-radius:.5rem; overflow:hidden; }
+    .hist-item[open] { background:#fff; box-shadow:0 0 0 1px #e2e8f0; border-left-color:#4f46e5; }
+    .hist-item > summary { list-style:none; cursor:pointer; user-select:none; }
+    .hist-item > summary::-webkit-details-marker { display:none; }
+    .hist-item > summary:hover { background:#eef2ff; }
+    .hist-arrow { display:inline-block; transition:transform .15s; font-size:.6rem; color:#94a3b8; }
+    .hist-item[open] .hist-arrow { transform:rotate(90deg); }
+    .hist-item[open] .hist-preview { display:none; }
+
+    /* ===== 甘特圖 ===== */
+    #gantt { overflow:auto; max-height:calc(100vh - 230px); min-height:320px; position:relative; background:#fff; }
+    .g-inner { position:relative; }
+    .g-row { display:flex; height:34px; }
+    .g-left { position:sticky; left:0; z-index:3; flex:none; background:#fff; border-right:1px solid #e2e8f0; border-bottom:1px solid #f1f5f9; display:grid; grid-template-columns:38px 1fr 64px 50px 42px; align-items:center; gap:4px; padding-right:6px; font-size:.78rem; }
+    .g-row:hover .g-left { background:#f8fafc; }
+    .g-row.sel .g-left { background:#eef2ff; }
+    .g-time { position:relative; flex:none; border-bottom:1px solid #f1f5f9; }
+    .g-head { position:sticky; top:0; z-index:6; display:flex; height:46px; }
+    .g-head .g-left { z-index:7; background:#f8fafc; font-weight:700; color:#64748b; font-size:.72rem; border-bottom:1px solid #e2e8f0; height:46px; }
+    .g-head .g-time { background:#f8fafc; border-bottom:1px solid #e2e8f0; height:46px; }
+    .g-seg { position:absolute; height:23px; display:flex; align-items:center; justify-content:center; font-size:.7rem; color:#475569; border-left:1px solid #e2e8f0; overflow:hidden; white-space:nowrap; }
+    .g-seg.r1 { top:0; font-weight:700; justify-content:flex-start; padding-left:6px; }
+    .g-seg.r2 { top:23px; border-top:1px solid #e2e8f0; }
+    .g-seg.we { color:#94a3b8; background:#f1f5f9; }
+    .g-seg.td { background:#4f46e5; color:#fff; font-weight:700; }
+    .g-seg.hol { background:#fee2e2; color:#b91c1c; }
+    .g-seg.mk { background:#ecfeff; color:#0e7490; }
+    .g-hol { background:#fef2f2 !important; }
+    .g-overlay { position:absolute; top:46px; z-index:0; pointer-events:none; }
+    .g-we { position:absolute; top:0; bottom:0; background:#f8fafc; }
+    .g-ml { position:absolute; top:0; bottom:0; border-left:1px solid #e2e8f0; }
+    .g-today { position:absolute; top:0; bottom:0; width:2px; background:#ef4444; opacity:.75; }
+    .bar { position:absolute; top:8px; height:18px; border-radius:5px; cursor:grab; overflow:hidden; border:1px solid; touch-action:none; }
+    .bar:active { cursor:grabbing; }
+    .bar .fill { position:absolute; inset:0 auto 0 0; }
+    .bar .h { position:absolute; top:0; bottom:0; width:7px; cursor:ew-resize; z-index:2; }
+    .bar .h.l { left:0; } .bar .h.r { right:0; }
+    .bar:hover .h { background:rgba(255,255,255,.55); }
+    .bar.late { box-shadow:0 0 0 2px #ef4444; }
+    .pbar { position:absolute; top:11px; height:10px; background:#334155; cursor:grab; touch-action:none; border-radius:2px; }
+    .pbar::before, .pbar::after { content:''; position:absolute; bottom:-6px; border:5px solid transparent; border-top-color:#334155; }
+    .pbar::before { left:-1px; border-left-color:#334155; } .pbar::after { right:-1px; border-right-color:#334155; }
+    .pbar .fill { position:absolute; inset:0 auto 0 0; background:#22c55e; border-radius:2px; }
+    .ms { position:absolute; top:10px; width:14px; height:14px; transform:rotate(45deg); cursor:grab; touch-action:none; border:2px solid #fff; box-shadow:0 0 0 1px #64748b; }
+    .blabel { position:absolute; top:8px; font-size:.72rem; color:#334155; white-space:nowrap; pointer-events:none; line-height:18px; }
+    .row-acts { display:none; position:absolute; right:4px; top:5px; background:#fff; border:1px solid #e2e8f0; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .g-row:hover .row-acts { display:flex; }
+    .row-acts button { padding:1px 6px; font-size:.72rem; color:#475569; } .row-acts button:hover { background:#eef2ff; color:#4338ca; }
+    #dragTip { position:fixed; z-index:80; pointer-events:none; background:#0f172a; color:#fff; font-size:.72rem; padding:.25rem .5rem; border-radius:.4rem; }
+    .swatch { width:22px; height:22px; border-radius:6px; cursor:pointer; border:2px solid transparent; }
+    .swatch.on { border-color:#0f172a; }
+    .dep-box { max-height:150px; overflow:auto; border:1px solid #cbd5e1; border-radius:.5rem; padding:.3rem .5rem; background:#fff; }
+    .prog { height:6px; background:#e2e8f0; border-radius:99px; overflow:hidden; }
+    .prog > div { height:100%; background:#4f46e5; }
+    @media (max-width: 767px) {
+      .g-left { grid-template-columns:30px 1fr; }
+      .g-left .md-only { display:none; }
+      #listTable th:nth-child(n+3):nth-child(-n+9), #listTable td:nth-child(n+3):nth-child(-n+9) { display:none; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+<div class="max-w-[1600px] mx-auto px-3 py-3 md:px-6">
+
+  <!-- Header -->
+  <header class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between mb-3">
+    <div>
+      <p class="text-[10px] font-semibold tracking-wider text-indigo-600">專案甘特圖 · 第 1.5.1 版</p>
+      <h1 class="text-lg md:text-xl font-bold leading-tight">專案甘特圖管理</h1>
+      <p id="saveTarget" class="text-[11px] text-slate-500 mt-0.5"></p>
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span id="dirtyBadge" class="hidden text-[11px] font-semibold text-amber-600 mr-1">● 尚有未儲存變更</span>
+      <button class="btn btn-secondary btn-sm" id="folderBtn">選擇儲存資料夾</button>
+      <button class="btn btn-secondary btn-sm" id="importBtn">匯入 JSON</button>
+      <button class="btn btn-secondary btn-sm" id="exportBtn">儲存 JSON 備份</button>
+      <button class="btn btn-sm" style="background:#16a34a;color:#fff" id="excelBtn" title="匯出目前專案：任務清單、甘特圖、處理紀錄、假日設定">匯出 Excel</button>
+      <input id="importFile" type="file" accept=".json,application/json" class="hidden">
+    </div>
+  </header>
+
+  <!-- Project bar -->
+  <section class="bg-white rounded-xl shadow-sm px-3 py-2 mb-3 flex flex-wrap items-center gap-2">
+    <label class="text-xs font-semibold text-slate-500">專案</label>
+    <span id="projDot" class="w-3 h-3 rounded-full inline-block"></span>
+    <select id="projectSelect" class="field" style="width:auto;min-width:200px"></select>
+    <button class="btn btn-secondary btn-sm" id="projEditBtn">專案設定</button>
+    <button class="btn btn-secondary btn-sm" id="projNewBtn">＋ 新專案</button>
+    <button class="btn btn-secondary btn-sm" id="sampleBtn" title="另外新增一個範例專案，不會覆蓋現有資料">載入範例專案</button>
+    <span id="projMeta" class="text-xs text-slate-500 ml-1"></span>
+    <div class="ml-auto flex flex-wrap gap-1.5">
+      <button class="btn btn-secondary btn-sm" id="newPhaseBtn">＋ 階段</button>
+      <button class="btn btn-secondary btn-sm" id="newMsBtn">＋ 里程碑</button>
+      <button class="btn btn-primary btn-sm" id="newTaskBtn">＋ 新增任務</button>
+    </div>
+  </section>
+
+  <!-- Stats -->
+  <section class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+    <div class="bg-white rounded-lg px-3 py-1.5 shadow-sm"><p class="text-[11px] text-slate-500">任務數</p><p id="statAll" class="text-lg font-bold leading-tight">0</p></div>
+    <div class="bg-white rounded-lg px-3 py-1.5 shadow-sm"><p class="text-[11px] text-slate-500">進行中</p><p id="statDoing" class="text-lg font-bold leading-tight text-blue-600">0</p></div>
+    <div class="bg-white rounded-lg px-3 py-1.5 shadow-sm"><p class="text-[11px] text-slate-500">逾期未完成</p><p id="statLate" class="text-lg font-bold leading-tight text-red-600">0</p></div>
+    <div class="bg-white rounded-lg px-3 py-1.5 shadow-sm"><p class="text-[11px] text-slate-500">已完成</p><p id="statDone" class="text-lg font-bold leading-tight text-green-600">0</p></div>
+    <div class="bg-white rounded-lg px-3 py-1.5 shadow-sm col-span-2 md:col-span-1"><p class="text-[11px] text-slate-500">整體進度（依工期加權）</p><div class="flex items-center gap-2"><p id="statProg" class="text-lg font-bold leading-tight text-indigo-600">0%</p><div class="prog flex-1"><div id="statProgBar" style="width:0"></div></div></div></div>
+  </section>
+
+  <!-- Toolbar -->
+  <section class="bg-white rounded-t-xl shadow-sm px-3 py-2 flex flex-wrap items-center gap-2 border-b border-slate-100">
+    <div class="seg" id="viewSeg"><button data-view="gantt" class="on">甘特圖</button><button data-view="list">清單</button></div>
+    <div class="seg" id="zoomSeg"><button data-zoom="day" class="on">日</button><button data-zoom="week">週</button><button data-zoom="month">月</button></div>
+    <button class="btn btn-secondary btn-sm" id="todayBtn">跳到今天</button>
+    <button class="btn btn-secondary btn-sm" id="expandAllBtn">全部展開</button>
+    <button class="btn btn-secondary btn-sm" id="collapseAllBtn">全部收合</button>
+    <label class="text-xs text-slate-600 flex items-center gap-1"><input type="checkbox" id="showDeps" checked> 相依線</label>
+    <button class="btn btn-secondary btn-sm" id="autoBtn" title="依前置任務（完成→開始）自動往後排">自動排程</button>
+    <div class="flex flex-wrap gap-1.5 ml-auto w-full md:w-auto">
+      <input id="searchInput" class="field" style="width:200px" placeholder="搜尋名稱、負責人、說明…">
+      <select id="filterOwner" class="field" style="width:auto"><option value="">全部負責人</option></select>
+      <select id="filterStatus" class="field" style="width:auto"><option value="">全部狀態</option></select>
+    </div>
+  </section>
+
+  <section class="bg-white rounded-b-xl shadow-sm overflow-hidden">
+    <div id="welcome" class="hidden text-center py-16 px-4">
+      <div class="text-4xl mb-3">📊</div>
+      <p class="font-semibold">尚未有專案資料</p>
+      <p class="text-sm text-slate-500 mt-1 mb-4">先選擇儲存資料夾（會自動載入最新備份），或建立新專案／載入範例。</p>
+      <div class="flex justify-center gap-2"><button class="btn btn-primary" id="welcomeNew">建立新專案</button><button class="btn btn-secondary" id="welcomeSample">載入範例專案</button></div>
+    </div>
+    <div id="emptyProject" class="hidden text-center py-14 text-sm text-slate-500">此專案還沒有任務，點選右上方「＋ 新增任務」開始規劃。</div>
+    <div id="gantt"></div>
+    <div id="listWrap" class="hidden w-full overflow-x-auto">
+      <table id="listTable" class="w-full text-sm">
+        <thead class="bg-slate-50 text-slate-500 text-xs">
+          <tr>
+            <th class="text-left px-2 py-2 w-14">編號</th>
+            <th class="text-left px-2 py-2">名稱／最近處理</th>
+            <th class="text-left px-2 py-2 whitespace-nowrap">狀態</th>
+            <th class="text-left px-2 py-2 whitespace-nowrap">負責人</th>
+            <th class="text-left px-2 py-2 whitespace-nowrap">開始</th>
+            <th class="text-left px-2 py-2 whitespace-nowrap">結束</th>
+            <th class="text-right px-2 py-2 whitespace-nowrap"><span id="listDurTh">工期(天)</span></th>
+            <th class="text-left px-2 py-2 whitespace-nowrap w-28">進度</th>
+            <th class="text-right px-2 py-2 whitespace-nowrap">工時(h)</th>
+            <th class="text-right px-2 py-2 whitespace-nowrap">操作</th>
+          </tr>
+        </thead>
+        <tbody id="listBody" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </div>
+  </section>
+  <p class="text-[11px] text-slate-500 mt-3">操作提示：拖曳任務條可移動日期，拖曳左右邊緣可調整開始／結束；點一下任務條開啟詳細資料。儲存項目時自動寫入 db_data 資料夾（每次建立新檔，保留最新 5 筆）；拖曳調整在已授權資料夾時會自動儲存。工期預設以工作天計算（排除週六日與國定假日），可在「專案設定」改為日曆天或維護假日。本版本不使用瀏覽器本機儲存（localStorage）。</p>
+</div>
+
+<!-- Task edit dialog -->
+<div id="editModal" class="hidden fixed inset-0 z-40 modal-backdrop overflow-y-auto p-3 md:p-6">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-6xl mx-auto my-2">
+    <div class="sticky top-0 z-10 bg-white border-b border-slate-200 rounded-t-2xl px-5 py-2 flex items-center justify-between">
+      <h2 id="formTitle" class="text-lg font-bold">新增任務</h2>
+      <button type="button" data-close="editModal" class="text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+    </div>
+    <form id="taskForm" class="p-4 md:p-5 space-y-4">
+      <input type="hidden" id="editId">
+      <section>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
+          <div class="md:col-span-3"><label class="lbl" for="tName">名稱 <span class="text-red-500">*</span></label><input id="tName" class="field" required maxlength="160" placeholder="例如：QAS 整合測試"></div>
+          <div><label class="lbl" for="tType">類型</label><select id="tType" class="field"><option value="task">任務</option><option value="phase">階段（可含子任務）</option><option value="milestone">里程碑</option></select></div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mt-2">
+          <div class="col-span-2"><label class="lbl" for="tParent">所屬階段</label><select id="tParent" class="field"></select></div>
+          <div><label class="lbl" for="tStatus">狀態</label><select id="tStatus" class="field"></select></div>
+          <div><label class="lbl" for="tPriority">優先級</label><select id="tPriority" class="field"><option>中</option><option>高</option><option>低</option></select></div>
+          <div><label class="lbl" for="tOwner">負責人</label><input id="tOwner" class="field" maxlength="60" list="ownerList"><datalist id="ownerList"></datalist></div>
+          <div><label class="lbl" for="tStart">開始日</label><input id="tStart" type="date" class="field" required></div>
+          <div id="endWrap"><label class="lbl" for="tEnd">結束日</label><input id="tEnd" type="date" class="field"></div>
+          <div id="durWrap"><label class="lbl" for="tDur" id="tDurLbl">工期(天)</label><input id="tDur" type="number" min="1" step="1" class="field"></div>
+          <div class="col-span-2"><label class="lbl" for="tProg">進度 <span id="tProgVal" class="text-indigo-600">0%</span></label><input id="tProg" type="range" min="0" max="100" step="5" class="w-full accent-indigo-600"></div>
+          <div class="col-span-2"><label class="lbl">顏色</label><div id="swatches" class="flex gap-1.5 flex-wrap"></div></div>
+          <div><label class="lbl">總工時(h)</label><div id="totalHours" class="field bg-indigo-50 border-indigo-200 font-bold text-indigo-700">0</div></div>
+          <div class="col-span-2 lg:col-span-3"><p id="phaseNote" class="hidden text-[11px] text-amber-700 mt-4">此階段含子任務，日期與進度由子任務自動計算。</p></div>
+        </div>
+        <div id="sugRow" class="mt-1.5 text-[11px] text-slate-600 bg-indigo-50 border border-indigo-100 rounded-md px-2 py-1">💡 建議開始日：<b id="sugDate" class="text-indigo-700"></b>　<span id="sugText" class="text-slate-500"></span><button type="button" id="sugApply" class="ml-2 text-indigo-600 font-semibold hover:underline">套用</button></div>
+        <div class="mt-2"><label class="lbl">前置任務（完成後才開始）</label><div id="depBox" class="dep-box text-xs"></div></div>
+      </section>
+      <section>
+        <h3 class="font-semibold text-sm text-slate-600 mb-1">詳細說明 <span class="text-[11px] text-slate-400 font-normal">可貼上文字、圖片或截圖（Ctrl+V）</span></h3>
+        <div class="quill-box" style="height:300px"><div id="editor"></div></div>
+      </section>
+      <section class="border-t border-slate-200 pt-3">
+        <h3 class="font-semibold text-sm text-slate-600">工作處理紀錄</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+          <div><label class="lbl" for="hDate">日期</label><input id="hDate" type="date" class="field"></div>
+          <div><label class="lbl" for="hStatus">處理狀態</label><select id="hStatus" class="field"></select></div>
+          <div><label class="lbl" for="hHours">處理時間(h)</label><input id="hHours" type="number" min="0" step="0.25" class="field" placeholder="例如：1.5"></div>
+          <div><label class="lbl" for="hTitle">紀錄標題</label><input id="hTitle" class="field" maxlength="120"></div>
+          <div class="md:col-span-4"><div class="quill-box" style="height:180px"><div id="historyEditor"></div></div></div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3 mt-2"><button type="button" id="addHistoryBtn" class="btn btn-secondary btn-sm">＋ 加入處理紀錄</button><span id="historyTotalNote" class="text-xs font-semibold text-indigo-700"></span></div>
+        <div id="historyDraftList" class="mt-2 space-y-1.5 max-h-72 overflow-y-auto"></div>
+      </section>
+      <div class="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 border-t border-slate-200 pt-4">
+        <button type="button" id="deleteTaskBtn" class="btn btn-danger">刪除</button>
+        <div class="flex flex-col-reverse sm:flex-row gap-2">
+          <button type="button" data-close="editModal" class="btn btn-secondary">取消</button>
+          <button type="submit" class="btn btn-primary">儲存項目</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Detail dialog -->
+<div id="detailModal" class="hidden fixed inset-0 z-50 modal-backdrop overflow-y-auto p-3 md:p-6">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-5xl mx-auto my-2">
+    <div class="sticky top-0 z-10 bg-white border-b border-slate-200 rounded-t-2xl px-5 py-2 flex justify-between items-center">
+      <div><p id="detailSub" class="text-[11px] text-indigo-600 font-semibold"></p><h2 id="detailTitle" class="text-lg font-bold leading-tight"></h2></div>
+      <button type="button" data-close="detailModal" class="text-slate-400 hover:text-slate-700 text-2xl">×</button>
+    </div>
+    <div id="detailBody" class="p-4 md:p-5"></div>
+    <div class="px-5 pb-4 flex justify-end gap-2"><button id="detailEditBtn" class="btn btn-primary">編輯</button><button type="button" data-close="detailModal" class="btn btn-secondary">關閉</button></div>
+  </div>
+</div>
+
+<!-- Project dialog -->
+<div id="projModal" class="hidden fixed inset-0 z-50 modal-backdrop overflow-y-auto p-3 md:p-6">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl mx-auto my-10">
+    <div class="border-b border-slate-200 px-5 py-2 flex justify-between items-center"><h2 id="projTitle" class="text-lg font-bold">專案設定</h2><button type="button" data-close="projModal" class="text-slate-400 hover:text-slate-700 text-2xl">×</button></div>
+    <form id="projForm" class="p-5 space-y-3">
+      <input type="hidden" id="pId">
+      <div><label class="lbl" for="pName">專案名稱 *</label><input id="pName" class="field" required maxlength="100"></div>
+      <div class="grid grid-cols-2 gap-2">
+        <div><label class="lbl" for="pOwner">專案負責人</label><input id="pOwner" class="field" maxlength="60"></div>
+        <div><label class="lbl">代表色</label><div id="pSwatches" class="flex gap-1.5 flex-wrap"></div></div>
+      </div>
+      <div><label class="lbl" for="pMode">工期計算方式</label><select id="pMode" class="field"><option value="work">工作天（排除週六日、國定假日，計入補班日）</option><option value="calendar">日曆天（含週末與假日）</option></select><p class="text-[11px] text-slate-400 mt-0.5">切換不會移動既有任務日期，只改變工期計算；可再按「自動排程」重排。</p></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div><label class="lbl" for="pHol">國定假日／公司休假</label><textarea id="pHol" class="field font-mono" rows="7" placeholder="每行一筆：日期 名稱&#10;2027-01-01 元旦&#10;2027/2/5~2027/2/10 春節&#10;116年4月4日 兒童節&#10;（未寫年份以今年計）"></textarea><p id="pHolNote" class="text-[11px] text-slate-500 mt-0.5"></p></div>
+        <div><label class="lbl" for="pMk">補班日（週末需上班）</label><textarea id="pMk" class="field font-mono" rows="7" placeholder="每行一筆：日期 名稱&#10;2027-02-20 補班"></textarea><p id="pMkNote" class="text-[11px] text-slate-500 mt-0.5"></p></div>
+      </div>
+      <div><label class="lbl" for="pDesc">專案說明</label><textarea id="pDesc" class="field" rows="4"></textarea></div>
+      <div class="flex justify-between gap-2 pt-2">
+        <button type="button" id="projDeleteBtn" class="btn btn-danger">刪除專案</button>
+        <div class="flex gap-2"><button type="button" data-close="projModal" class="btn btn-secondary">取消</button><button type="submit" class="btn btn-primary">儲存</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="dragTip" class="hidden"></div>
+<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[90] hidden bg-slate-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg max-w-[90vw]"></div>
+
+<script>
+(() => {
+  'use strict';
+  const STATUSES = ['未開始','進行中','待確認','已完成','暫停'];
+  const COLORS = ['#6366f1','#0ea5e9','#14b8a6','#22c55e','#f59e0b','#f97316','#ef4444','#ec4899','#8b5cf6','#64748b'];
+  const DB_FOLDER = 'db_data', FILE_PREFIX = '專案甘特_';
+  const FS_SUPPORTED = typeof window.showDirectoryPicker === 'function';
+  const ROW_H = 34;
+  const ZOOM = { day:32, week:13, month:4 };
+  const DAY = 86400000;
+  const $ = id => document.getElementById(id);
+
+  let state = { projects:[], tasks:[] };
+  let curPid = null;
+  let view = 'gantt', zoom = 'day';
+  let collapsed = new Set();
+  let draftHistory = [];
+  let activeDetailId = null;
+  let dirty = false;
+  let quill, historyQuill, dirHandle = null;
+  let G = { rs:null, dw:32 };
+  let drag = null, selColor = COLORS[0], selPColor = COLORS[0];
+  let needScrollToday = true;
+
+  /* ---------- 工具 ---------- */
+  const pad = n => String(n).padStart(2,'0');
+  const today = () => { const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+  const toUTC = s => { const [y,m,d]=String(s).split('-').map(Number); return Date.UTC(y,(m||1)-1,d||1); };
+  const fromUTC = t => new Date(t).toISOString().slice(0,10);
+  const addDays = (s,n) => fromUTC(toUTC(s)+n*DAY);
+  const diffDays = (a,b) => Math.round((toUTC(b)-toUTC(a))/DAY);
+  const dow = s => new Date(toUTC(s)).getUTCDay();
+  const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s||''));
+  const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const safeHtml = html => window.DOMPurify ? DOMPurify.sanitize(String(html||''), {ADD_DATA_URI_TAGS:['img']}) : escapeHtml(html);
+  const richHtml = html => `<div class="ql-snow"><div class="ql-editor" style="padding:0;height:auto;overflow:visible">${safeHtml(html)}</div></div>`;
+  const textFromHtml = html => { const d=document.createElement('div'); d.innerHTML=safeHtml(html); return (d.textContent||'').trim(); };
+  const makeId = () => 'T' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  const fmtH = n => String(Math.round((Number(n)||0)*100)/100);
+  const sumHours = list => (Array.isArray(list)?list:[]).reduce((a,h)=>a+(Number(h&&h.hours)||0),0);
+  const md = s => s ? `${+s.slice(5,7)}/${+s.slice(8,10)}` : '—';
+
+  /* ---------- 工作天計算 ---------- */
+  let calCache = {};
+  function cal(pid) {
+    if (calCache[pid]) return calCache[pid];
+    const p = state.projects.find(x=>x.id===pid) || {};
+    return calCache[pid] = { work:(p.calendarMode||'work')==='work',
+      hol:new Map((p.holidays||[]).map(h=>[h.date,h.name||'假日'])), mk:new Map((p.makeupDays||[]).map(h=>[h.date,h.name||'補班'])) };
+  }
+  const offDay = (d,c) => c.mk.has(d) ? false : (c.hol.has(d) || dow(d)===0 || dow(d)===6);
+  const isWork = (d,c) => !c.work || !offDay(d,c);
+  const nextWork = (d,c) => { let x=d, i=0; while(!isWork(x,c) && i++<60) x=addDays(x,1); return x; };
+  const prevWork = (d,c) => { let x=d, i=0; while(!isWork(x,c) && i++<60) x=addDays(x,-1); return x; };
+  function workDays(s,e,c){ if(!c.work) return diffDays(s,e)+1; let n=0; for(let x=s; x<=e; x=addDays(x,1)) if(isWork(x,c)) n++; return n; }
+  function addWork(s,n,c){ n=Math.max(1,n||1); if(!c.work) return addDays(s,n-1); let e=s, k=isWork(s,c)?1:0, i=0; while(k<n && i++<3000){ e=addDays(e,1); if(isWork(e,c)) k++; } return e; }
+  const tCal = t => cal(t.projectId);
+  const durOf = t => { const e=eff(t); return workDays(e.start,e.end,tCal(t)); };
+  const durText = t => t.type==='milestone' ? '—' : `${durOf(t)} ${tCal(t).work?'工作天':'天（日曆天）'}`;
+  const formCal = () => { const id=$('editId').value; return id && task(id) ? tCal(task(id)) : cal(curPid); };
+  // 解析假日文字：支援 2027-01-01、2027/1/1、2027.1.1、2027年1月1日、民國 116/1/1、20270101、1/1（無年份＝今年）、
+  // 區間（~ ～ 至 到 -）、星期標示（(四)、週四、星期四）、Excel／行政院 CSV 貼上；回傳 {list, bad}
+  const DT = /^\s*(?:(\d{2,4})\s*[-\/.年]\s*)?(\d{1,2})\s*[-\/.月]\s*(\d{1,2})\s*日?\s*(?:[（(]\s*([一二三四五六日])\s*[)）]|(?:星期|週|周)([一二三四五六日天]))?/;
+  const WK='日一二三四五六';
+  function takeDate(str, defY){
+    let m=str.match(/^\s*(\d{4})(\d{2})(\d{2})(?!\d)/), y, mo, d;
+    let wk='';
+    if (m) { y=+m[1]; mo=+m[2]; d=+m[3]; }
+    else { m=str.match(DT); if(!m) return null; y=m[1]?+m[1]:defY; mo=+m[2]; d=+m[3]; if(y<1000) y+=1911; wk=(m[4]||m[5]||'').replace('天','日'); }
+    const ds=`${y}-${pad(mo)}-${pad(d)}`;
+    if (!isDate(ds) || fromUTC(toUTC(ds))!==ds) return { invalid:`${ds} 不是有效日期` };
+    // 星期標示（(五)、週五、星期五）只略過、不比對
+    return { date:ds, y, rest:str.slice(m[0].length) };
+  }
+  function parseDays(text){
+    const out=new Map(), bad=[], defY=+today().slice(0,4);
+    const norm=String(text||'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/／/g,'/').replace(/[－—–]/g,'-').replace(/．/g,'.').replace(/～/g,'~');
+    norm.split(/\r?\n|；|;/).forEach(raw=>{
+      const line=raw.trim(); if(!line) return;
+      const a=takeDate(line, defY);
+      if (!a) { if(/\d/.test(line)) bad.push(`${line}　→ 找不到日期`); return; }   // 沒有數字的行（例如表頭）直接略過
+      if (a.invalid) { bad.push(`${line}　→ ${a.invalid}`); return; }
+      let end=a.date, rest=a.rest;
+      const sep=rest.match(/^\s*(?:~|至|到|-)\s*/);
+      if (sep) {
+        const b=takeDate(rest.slice(sep[0].length), a.y);
+        if (!b) { bad.push(`${line}　→ 區間結束日無法辨識`); return; }
+        if (b.invalid) { bad.push(`${line}　→ 結束日 ${b.invalid}`); return; }
+        if (b.date < a.date) { bad.push(`${line}　→ 結束日 ${b.date} 早於開始日 ${a.date}`); return; }
+        if (diffDays(a.date,b.date) > 60) { bad.push(`${line}　→ 區間 ${diffDays(a.date,b.date)+1} 天過長，請確認`); return; }
+        end=b.date; rest=b.rest;
+      }
+      const name=rest.replace(/^[\s,，、:：|]+/,'').replace(/^[（(]?[一二三四五六日][)）]?(?=[\s,，\t]|$)[\s,，\t]*/,'').replace(/^\d(?=[\s,，\t])[\s,，\t]*/,'').replace(/[\s,，]+$/,'').trim();
+      for (let d=a.date,i=0; d<=end && i<370; d=addDays(d,1),i++) out.set(d,name);
+    });
+    return { list:[...out.entries()].sort((x,y)=>x[0].localeCompare(y[0])).map(([date,name])=>({date,name})), bad };
+  }
+  function previewDays(id){
+    const {list,bad}=parseDays($(id).value);
+    $(id+'Note').innerHTML = `已辨識 <b>${list.length}</b> 天` + (bad.length?`，<span class="text-red-600">有 ${bad.length} 行需要修正：</span><ul class="text-red-600 list-disc pl-4">${bad.slice(0,5).map(b=>`<li>${escapeHtml(b)}</li>`).join('')}${bad.length>5?'<li>…</li>':''}</ul>`:'');
+  }
+  const fmtDays = list => (list||[]).map(h=>`${h.date} ${h.name||''}`.trim()).join('\n');
+  const cleanDays = arr => Array.isArray(arr) ? arr.filter(h=>h && isDate(h.date)).map(h=>({date:h.date, name:String(h.name||'')})) : [];
+  const showToast = msg => { $('toast').textContent=msg; $('toast').classList.remove('hidden'); clearTimeout(showToast.t); showToast.t=setTimeout(()=>$('toast').classList.add('hidden'),3200); };
+  const markDirty = () => { dirty=true; $('dirtyBadge').classList.remove('hidden'); };
+  const markClean = () => { dirty=false; $('dirtyBadge').classList.add('hidden'); };
+
+  /* ---------- 資料存取 ---------- */
+  const task = id => state.tasks.find(t=>t.id===id);
+  const project = () => state.projects.find(p=>p.id===curPid);
+  const projectTasks = () => state.tasks.filter(t=>t.projectId===curPid);
+  const kidsOf = id => state.tasks.filter(t=>t.parentId===id);
+  const isParent = t => t.type==='phase' && kidsOf(t.id).length>0;
+
+  // 實際日期／進度（階段由子任務彙總）
+  function eff(t, seen = new Set()) {
+    if (!(seen instanceof Set)) seen = new Set();
+    if (isParent(t) && !seen.has(t.id)) {
+      seen.add(t.id);
+      const ks = kidsOf(t.id).map(k=>({k, e:eff(k, seen)}));
+      let start=ks[0].e.start, end=ks[0].e.end, w=0, p=0;
+      ks.forEach(({e})=>{ if(e.start<start) start=e.start; if(e.end>end) end=e.end; const wt=Math.max(1,workDays(e.start,e.end,cal(t.projectId))); w+=wt; p+=wt*e.progress; });
+      return { start, end, progress: w ? Math.round(p/w) : 0 };
+    }
+    const start = t.start || today();
+    const end = t.type==='milestone' ? start : (t.end && t.end>=start ? t.end : start);
+    return { start, end, progress: Number(t.progress)||0 };
+  }
+  const isLate = t => { const e=eff(t); return e.end < today() && e.progress < 100 && t.status!=='已完成'; };
+  const statusClass = t => isLate(t) ? 'st-late' : ({'已完成':'st-done','進行中':'st-doing','待確認':'st-wait','暫停':'st-pause'}[t.status] || 'st-todo');
+  const statusText = t => isLate(t) ? `逾期・${t.status}` : t.status;
+
+  // 依階層排出列（WBS）
+  function buildRows(ignoreCollapse = false, noFilter = false) {
+    const all = projectTasks();
+    const ids = new Set(all.map(t=>t.id));
+    const tops = all.filter(t=>!t.parentId || !ids.has(t.parentId));
+    const rows = [];
+    tops.forEach((t,i)=>{
+      const wbs = String(i+1);
+      const kids = all.filter(c=>c.parentId===t.id).map((c,j)=>({t:c, wbs:`${wbs}.${j+1}`, level:1}));
+      rows.push({t, wbs, level:0, kidCount:kids.length, kids});
+    });
+    const q = $('searchInput').value.trim().toLowerCase(), st = $('filterStatus').value, ow = $('filterOwner').value;
+    const filtering = !noFilter && !!(q || st || ow);
+    const match = t => {
+      const hay = [t.name,t.owner,t.status,textFromHtml(t.descriptionHtml),(t.history||[]).map(h=>h.title+' '+h.note).join(' ')].join(' ').toLowerCase();
+      return (!q || hay.includes(q)) && (!st || t.status===st || (st==='逾期' && isLate(t))) && (!ow || t.owner===ow);
+    };
+    const out = [];
+    rows.forEach(r=>{
+      const kids = filtering ? r.kids.filter(k=>match(k.t)) : r.kids;
+      if (filtering && !match(r.t) && !kids.length) return;
+      out.push(r);
+      if (ignoreCollapse || filtering || !collapsed.has(r.t.id)) out.push(...kids);
+    });
+    return out;
+  }
+  function wbsMap() { const m={}; const all=projectTasks(); const ids=new Set(all.map(t=>t.id));
+    all.filter(t=>!t.parentId||!ids.has(t.parentId)).forEach((t,i)=>{ m[t.id]=String(i+1); all.filter(c=>c.parentId===t.id).forEach((c,j)=>m[c.id]=`${i+1}.${j+1}`); }); return m; }
+
+  /* ---------- 甘特圖 ---------- */
+  function monthSegs(rs, re) {
+    const segs=[]; let cur=rs; const stop=addDays(re,1);
+    while (cur < stop) {
+      const y=+cur.slice(0,4), m=+cur.slice(5,7);
+      let next=fromUTC(Date.UTC(y,m,1)); if (next>stop) next=stop;
+      segs.push({y, m, l:diffDays(rs,cur), w:diffDays(cur,next)}); cur=next;
+    }
+    return segs;
+  }
+
+  function renderGantt() {
+    const el = $('gantt');
+    const rows = buildRows();
+    if (!rows.length) { el.innerHTML=''; return; }
+    const sl=el.scrollLeft, stp=el.scrollTop;
+    const dw = ZOOM[zoom]; const L = window.innerWidth<768 ? 170 : 420;
+    let min=today(), max=today();
+    rows.forEach(r=>{ const e=eff(r.t); if(e.start<min) min=e.start; if(e.end>max) max=e.end; });
+    let rs=addDays(min,-7), re=addDays(max, zoom==='month'?45:21);
+    if (zoom==='month') { rs=rs.slice(0,8)+'01'; const y=+re.slice(0,4), m=+re.slice(5,7); re=fromUTC(Date.UTC(y,m,0)); }
+    else { rs=addDays(rs, -((dow(rs)+6)%7)); }
+    const days=diffDays(rs,re)+1, W=days*dw, H=rows.length*ROW_H, td=today();
+    G = { rs, dw };
+    const xOf = s => diffDays(rs,s)*dw;
+
+    // 表頭
+    let r1='', r2='';
+    const ms = monthSegs(rs,re);
+    if (zoom==='month') {
+      const years={}; ms.forEach(s=>{ (years[s.y] ||= {l:s.l,w:0}).w+=s.w; });
+      Object.entries(years).forEach(([y,s])=>r1+=`<div class="g-seg r1" style="left:${s.l*dw}px;width:${s.w*dw}px">${y} 年</div>`);
+      ms.forEach(s=>r2+=`<div class="g-seg r2" style="left:${s.l*dw}px;width:${s.w*dw}px">${s.m}月</div>`);
+    } else {
+      ms.forEach(s=>r1+=`<div class="g-seg r1" style="left:${s.l*dw}px;width:${s.w*dw}px">${s.y}年${s.m}月</div>`);
+      if (zoom==='day') {
+        const wk='日一二三四五六';
+        const C2=cal(curPid);
+        for (let i=0;i<days;i++){ const d=addDays(rs,i), w=dow(d), hn=C2.hol.get(d), mn=C2.mk.get(d);
+          const cls = d===td?'td':(mn!==undefined?'mk':(hn!==undefined?'hol':(w===0||w===6?'we':'')));
+          r2+=`<div class="g-seg r2 ${cls}" title="${escapeHtml(hn??mn??'')}" style="left:${i*dw}px;width:${dw}px;flex-direction:column;line-height:1"><span>${+d.slice(8)}</span><span style="font-size:.58rem">${mn!==undefined?'班':(hn!==undefined?'假':wk[w])}</span></div>`; }
+      } else {
+        for (let i=0;i<days;i+=7){ const d=addDays(rs,i); r2+=`<div class="g-seg r2" style="left:${i*dw}px;width:${7*dw}px">${md(d)}</div>`; }
+      }
+    }
+
+    // 背景（週末、月分隔、今天）
+    let bg='';
+    const C=cal(curPid);
+    if (zoom!=='month') for (let i=0;i<days;i++){ const d=addDays(rs,i);
+      if (C.hol.has(d) && !C.mk.has(d)) bg+=`<div class="g-we g-hol" style="left:${i*dw}px;width:${dw}px"></div>`;
+      else if (offDay(d,C)) bg+=`<div class="g-we" style="left:${i*dw}px;width:${dw}px"></div>`; }
+    ms.forEach(s=>bg+=`<div class="g-ml" style="left:${s.l*dw}px"></div>`);
+    if (td>=rs && td<=re) bg+=`<div class="g-today" style="left:${xOf(td)+dw/2-1}px"></div>`;
+
+    // 相依線
+    const idx={}; rows.forEach((r,i)=>idx[r.t.id]=i);
+    let paths='';
+    if ($('showDeps').checked) rows.forEach((r,i)=>{
+      (r.t.deps||[]).forEach(pid=>{
+        if (idx[pid]===undefined) return;
+        const p=task(pid), pe=eff(p), se=eff(r.t);
+        const x1 = p.type==='milestone' ? xOf(pe.start)+dw/2+8 : xOf(pe.end)+dw;
+        const y1 = idx[pid]*ROW_H+ROW_H/2;
+        const x2 = r.t.type==='milestone' ? xOf(se.start)+dw/2-9 : xOf(se.start);
+        const y2 = i*ROW_H+ROW_H/2;
+        const need = (r.t.type==='milestone'||p.type==='milestone') ? pe.end : addDays(pe.end,1);
+        const bad = se.start < need;
+        const c = bad ? '#ef4444' : '#94a3b8';
+        let d;
+        if (x2-10 >= x1+6) d=`M${x1} ${y1} H${x2-10} V${y2} H${x2-2}`;
+        else { const ym = y2>y1 ? y2-ROW_H/2 : y2+ROW_H/2; d=`M${x1} ${y1} h8 V${ym} H${x2-12} V${y2} H${x2-2}`; }
+        paths+=`<path d="${d}" fill="none" stroke="${c}" stroke-width="1.4" marker-end="url(#ar${bad?'R':'G'})"/>`;
+      });
+    });
+    const svg = `<svg width="${W}" height="${H}" style="position:absolute;left:0;top:0;overflow:visible">
+      <defs><marker id="arG" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker>
+      <marker id="arR" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ef4444"/></marker></defs>${paths}</svg>`;
+
+    // 列
+    const color = t => t.color || project()?.color || COLORS[0];
+    const rowsHtml = rows.map(r=>{
+      const t=r.t, e=eff(t), x=xOf(e.start), w=(diffDays(e.start,e.end)+1)*dw, par=isParent(t);
+      let bar;
+      if (t.type==='milestone') {
+        bar = `<div class="ms" data-bar="${t.id}" title="${escapeHtml(t.name)}" style="left:${x+dw/2-7}px;background:${color(t)}"></div>
+               <span class="blabel" style="left:${x+dw/2+12}px">◆ ${escapeHtml(t.name)}　${md(e.start)}</span>`;
+      } else if (par) {
+        bar = `<div class="pbar" data-bar="${t.id}" style="left:${x}px;width:${w}px"><div class="fill" style="width:${e.progress}%"></div></div>
+               <span class="blabel font-semibold" style="left:${x+w+8}px">${escapeHtml(t.name)}　${e.progress}%</span>`;
+      } else {
+        const c=color(t);
+        bar = `<div class="bar ${isLate(t)?'late':''}" data-bar="${t.id}" title="${escapeHtml(t.name)}｜${e.start} → ${e.end}" style="left:${x}px;width:${w}px;background:${c}33;border-color:${c}">
+                 <div class="fill" style="width:${e.progress}%;background:${c}"></div><span class="h l" data-mode="start"></span><span class="h r" data-mode="end"></span></div>
+               <span class="blabel" style="left:${x+w+8}px">${escapeHtml(t.name)}${t.owner?`（${escapeHtml(t.owner)}）`:''}　${e.progress}%</span>`;
+      }
+      const tog = r.level===0 && r.kidCount ? `<button data-toggle="${t.id}" class="text-slate-400 hover:text-indigo-600 w-4 shrink-0">${collapsed.has(t.id)?'▸':'▾'}</button>` : `<span class="w-4 shrink-0"></span>`;
+      const icon = t.type==='milestone' ? '◆ ' : '';
+      return `<div class="g-row ${activeDetailId===t.id?'sel':''}">
+        <div class="g-left" style="width:${L}px">
+          <span class="text-[10px] text-slate-400 pl-2">${r.wbs}</span>
+          <div class="flex items-center min-w-0 relative" style="padding-left:${r.level*14}px">${tog}
+            <button data-detail="${t.id}" class="truncate text-left hover:text-indigo-700 ${r.level===0&&t.type==='phase'?'font-bold':''} ${isLate(t)?'text-red-600':''}">${icon}${escapeHtml(t.name)}</button>
+            <span class="row-acts"><button data-up="${t.id}" title="上移">↑</button><button data-down="${t.id}" title="下移">↓</button>${t.type==='phase'?`<button data-addkid="${t.id}" title="新增子任務">＋</button>`:''}<button data-edit="${t.id}" title="編輯">✎</button></span>
+          </div>
+          <span class="md-only truncate text-slate-500 text-xs">${escapeHtml(t.owner||'—')}</span>
+          <span class="md-only text-right text-slate-500 text-xs">${t.type==='milestone'?'—':durOf(t)}</span>
+          <span class="md-only text-right text-xs font-semibold ${e.progress>=100?'text-green-600':'text-slate-600'}">${e.progress}%</span>
+        </div>
+        <div class="g-time" style="width:${W}px">${bar}</div>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = `<div class="g-inner" style="width:${L+W}px">
+      <div class="g-head"><div class="g-left" style="width:${L}px"><span class="pl-2">編號</span><span>名稱</span><span class="md-only">負責人</span><span class="md-only text-right">${cal(curPid).work?'工作天':'日曆天'}</span><span class="md-only text-right">進度</span></div>
+        <div class="g-time" style="width:${W}px">${r1}${r2}</div></div>
+      <div style="position:relative">
+        <div class="g-overlay" style="left:${L}px;top:0;width:${W}px;height:${H}px">${bg}${svg}</div>
+        ${rowsHtml}
+      </div></div>`;
+    if (needScrollToday) { needScrollToday=false; scrollToToday(); }
+    else { el.scrollLeft=sl; el.scrollTop=stp; }
+  }
+
+  function scrollToToday() {
+    if (!G.rs) return;
+    const L = window.innerWidth<768 ? 170 : 420;
+    $('gantt').scrollLeft = Math.max(0, diffDays(G.rs,today())*G.dw - ($('gantt').clientWidth-L)/3);
+  }
+
+  /* ---------- 拖曳任務條 ---------- */
+  $('gantt').addEventListener('pointerdown', e=>{
+    const bar=e.target.closest('[data-bar]'); if(!bar || e.button!==0) return;
+    const t=task(bar.dataset.bar); if(!t) return;
+    const mode = e.target.dataset.mode || 'move';
+    drag = { t, mode, bar, x0:e.clientX, left0:parseFloat(bar.style.left), w0:parseFloat(bar.style.width)||0, dd:0, moved:false, e0:eff(t) };
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const dx=e.clientX-drag.x0; if(Math.abs(dx)>3) drag.moved=true; if(!drag.moved) return;
+    const dw=G.dw, dd=Math.round(dx/dw); drag.dd=dd;
+    let s=drag.e0.start, en=drag.e0.end;
+    if (drag.mode==='move') { drag.bar.style.left=(drag.left0+dd*dw)+'px'; s=addDays(s,dd); en=addDays(en,dd); }
+    else if (drag.mode==='start') { const max=drag.w0/dw-1; const d=Math.min(dd,max); drag.bar.style.left=(drag.left0+d*dw)+'px'; drag.bar.style.width=(drag.w0-d*dw)+'px'; s=addDays(s,d); }
+    else { const d=Math.max(dd, -(drag.w0/dw-1)); drag.bar.style.width=(drag.w0+d*dw)+'px'; en=addDays(en,d); }
+    const tip=$('dragTip'); tip.textContent = drag.t.type==='milestone' ? s : `${s} → ${en}（${workDays(s,en,tCal(drag.t))} ${tCal(drag.t).work?'工作天':'天'}）`;
+    tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+14)+'px'; tip.classList.remove('hidden');
+  });
+  window.addEventListener('pointerup', ()=>{
+    if(!drag) return;
+    const d=drag; drag=null; $('dragTip').classList.add('hidden');
+    if (!d.moved) { openDetail(d.t.id); return; }
+    if (!d.dd) { renderGantt(); return; }
+    const t=d.t;
+    if (d.mode==='move') {
+      const shift = x => { if (isParent(x)) { kidsOf(x.id).forEach(shift); return; }
+        const c=tCal(x), n=workDays(x.start,x.end,c);
+        x.start=nextWork(addDays(x.start,d.dd),c); x.end = x.type==='milestone' ? x.start : addWork(x.start,n,c); };
+      shift(t);
+    } else if (!isParent(t)) {
+      const c=tCal(t);
+      if (d.mode==='start') { const s2=nextWork(addDays(t.start, Math.min(d.dd, diffDays(t.start,t.end))),c); t.start = s2>t.end ? t.end : s2; }
+      else { const e2=prevWork(addDays(t.end, Math.max(d.dd, -diffDays(t.start,t.end))),c); t.end = e2<t.start ? t.start : e2; }
+    }
+    t.updatedAt=new Date().toISOString();
+    markDirty(); render(); autoSave();
+  });
+
+  /* ---------- 清單 ---------- */
+  function latestHistory(t) {
+    const list=Array.isArray(t.history)?t.history:[]; if(!list.length) return null;
+    return list.reduce((b,h)=>((h.date||'')+'|'+(h.createdAt||'')) > ((b.date||'')+'|'+(b.createdAt||'')) ? h : b, list[0]);
+  }
+  function renderList() {
+    const rows=buildRows(true);
+    $('listDurTh').textContent = cal(curPid).work ? '工期(工作天)' : '工期(日曆天)';
+    $('listBody').innerHTML = rows.map(r=>{
+      const t=r.t, e=eff(t), h=latestHistory(t);
+      const hrs = isParent(t) ? sumHours(kidsOf(t.id).flatMap(k=>k.history||[]))+sumHours(t.history) : sumHours(t.history);
+      return `<tr class="hover:bg-slate-50 ${r.level===0&&t.type==='phase'?'bg-slate-50/60':''}">
+        <td class="px-2 py-2 text-xs text-slate-400 align-top">${r.wbs}</td>
+        <td class="px-2 py-2 align-top" style="padding-left:${8+r.level*18}px">
+          <button data-detail="${t.id}" class="text-left hover:text-indigo-700 ${t.type==='phase'?'font-bold':'font-semibold'}">${t.type==='milestone'?'◆ ':''}${escapeHtml(t.name)}</button>
+          ${h?`<div class="mt-1 text-xs text-slate-500 border-l-2 border-indigo-300 pl-2"><span class="font-semibold text-slate-600">最近處理：${escapeHtml(h.date)}｜${escapeHtml(h.title||'處理紀錄')}</span>${h.hours?` · ${fmtH(h.hours)} h`:''}<div style="display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden">${escapeHtml(h.note)}</div></div>`:''}
+        </td>
+        <td class="px-2 py-2 align-top"><span class="status-pill ${statusClass(t)}">${escapeHtml(statusText(t))}</span></td>
+        <td class="px-2 py-2 align-top whitespace-nowrap">${escapeHtml(t.owner||'—')}</td>
+        <td class="px-2 py-2 align-top whitespace-nowrap">${e.start}</td>
+        <td class="px-2 py-2 align-top whitespace-nowrap ${isLate(t)?'text-red-600 font-semibold':''}">${t.type==='milestone'?'—':e.end}</td>
+        <td class="px-2 py-2 align-top text-right">${t.type==='milestone'?'—':durOf(t)}</td>
+        <td class="px-2 py-2 align-top"><div class="flex items-center gap-1.5"><div class="prog flex-1"><div style="width:${e.progress}%"></div></div><span class="text-xs w-8 text-right">${e.progress}%</span></div></td>
+        <td class="px-2 py-2 align-top text-right font-semibold">${fmtH(hrs)}</td>
+        <td class="px-2 py-2 align-top text-right whitespace-nowrap"><button class="text-indigo-600 hover:underline mr-1.5" data-edit="${t.id}">編輯</button><button class="text-red-600 hover:underline" data-del="${t.id}">刪除</button></td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="10" class="text-center py-10 text-slate-400">沒有符合條件的任務</td></tr>`;
+  }
+
+  /* ---------- 主渲染 ---------- */
+  function renderProjectBar() {
+    $('projectSelect').innerHTML = state.projects.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    if (curPid) $('projectSelect').value=curPid;
+    const p=project();
+    $('projDot').style.background = p?.color || 'transparent';
+    if (p) { const all=projectTasks(); const es=all.map(eff); const s=es.length?es.reduce((a,e)=>e.start<a?e.start:a, es[0].start):''; const en=es.length?es.reduce((a,e)=>e.end>a?e.end:a, es[0].end):'';
+      $('projMeta').textContent = `${p.owner?'負責人：'+p.owner+'　':''}${cal(p.id).work?'【工作天制】':'【日曆天制】'}${s?`期間：${s} ～ ${en}（${cal(p.id).work?workDays(s,en,cal(p.id))+' 工作天／':''}${diffDays(s,en)+1} 日曆天）`:''}`; }
+    else $('projMeta').textContent='';
+  }
+  function renderStats() {
+    const all=projectTasks(), leaf=all.filter(t=>!isParent(t));
+    $('statAll').textContent=leaf.length;
+    $('statDoing').textContent=leaf.filter(t=>t.status==='進行中').length;
+    $('statLate').textContent=leaf.filter(isLate).length;
+    $('statDone').textContent=leaf.filter(t=>t.status==='已完成'||eff(t).progress>=100).length;
+    let w=0,p=0; leaf.forEach(t=>{ const e=eff(t), wt=Math.max(1,workDays(e.start,e.end,tCal(t))); w+=wt; p+=wt*e.progress; });
+    const pct=w?Math.round(p/w):0; $('statProg').textContent=pct+'%'; $('statProgBar').style.width=pct+'%';
+    const owners=[...new Set(all.map(t=>t.owner).filter(Boolean))].sort();
+    const cur=$('filterOwner').value;
+    $('filterOwner').innerHTML='<option value="">全部負責人</option>'+owners.map(o=>`<option>${escapeHtml(o)}</option>`).join('');
+    if (owners.includes(cur)) $('filterOwner').value=cur;
+    $('ownerList').innerHTML=[...new Set(state.tasks.map(t=>t.owner).filter(Boolean))].map(o=>`<option value="${escapeHtml(o)}">`).join('');
+  }
+  function render() {
+    calCache = {};
+    const noProj = !state.projects.length;
+    $('welcome').classList.toggle('hidden', !noProj);
+    if (noProj) { curPid=null; } else if (!project()) curPid=state.projects[0].id;
+    const empty = !noProj && !projectTasks().length;
+    $('emptyProject').classList.toggle('hidden', !empty);
+    renderProjectBar(); renderStats();
+    const showG = view==='gantt' && !noProj && !empty;
+    $('gantt').classList.toggle('hidden', !showG);
+    $('listWrap').classList.toggle('hidden', view!=='list' || noProj || empty);
+    $('zoomSeg').style.visibility = view==='gantt'?'visible':'hidden';
+    if (showG) renderGantt(); else if (view==='list') renderList();
+  }
+
+  // 事件代理（甘特圖與清單共用）
+  function delegate(e) {
+    const b=e.target.closest('button'); if(!b) return;
+    const d=b.dataset;
+    if (d.toggle) { collapsed.has(d.toggle)?collapsed.delete(d.toggle):collapsed.add(d.toggle); render(); }
+    else if (d.detail) openDetail(d.detail);
+    else if (d.edit) openEdit(d.edit);
+    else if (d.del) deleteTask(d.del);
+    else if (d.addkid) openNew('task', d.addkid);
+    else if (d.up || d.down) moveTask(d.up||d.down, d.up?-1:1);
+  }
+  $('gantt').addEventListener('click', delegate);
+  $('listBody').addEventListener('click', delegate);
+
+  function moveTask(id, dir) {
+    const t=task(id); const sibs=state.tasks.filter(x=>x.projectId===t.projectId && (x.parentId||'')===(t.parentId||''));
+    const i=sibs.indexOf(t), j=i+dir; if(j<0||j>=sibs.length) return;
+    const a=state.tasks.indexOf(t), b=state.tasks.indexOf(sibs[j]);
+    [state.tasks[a], state.tasks[b]] = [state.tasks[b], state.tasks[a]];
+    markDirty(); render(); autoSave();
+  }
+
+  /* ---------- 自動排程 ---------- */
+  function runSchedule() {
+    const list=projectTasks().filter(t=>!isParent(t));
+    let changed=0;
+    for (let it=0; it<=list.length; it++) {
+      let moved=false;
+      list.forEach(t=>{
+        (t.deps||[]).forEach(pid=>{
+          const p=task(pid); if(!p) return;
+          const c=tCal(t), pe=eff(p).end, need = nextWork((t.type==='milestone'||p.type==='milestone') ? pe : addDays(pe,1), c);
+          if (t.start < need) { const n=workDays(t.start,t.end,c); t.start=need; t.end=t.type==='milestone'?need:addWork(need,n,c); moved=true; changed++; }
+        });
+      });
+      if (!moved) break;
+    }
+    return changed;
+  }
+  function autoSchedule() {
+    const changed=runSchedule();
+    if (changed) { markDirty(); render(); autoSave(true); showToast(`已依相依關係調整 ${changed} 次任務日期`); }
+    else showToast('所有任務已符合相依關係，無需調整');
+  }
+
+  /* ---------- 詳細資料 ---------- */
+  const sortedHistory = list => (Array.isArray(list)?list:[]).map((h,i)=>({h,i}))
+    .sort((a,b)=>((b.h.date||'')+'|'+(b.h.createdAt||'')).localeCompare((a.h.date||'')+'|'+(a.h.createdAt||'')));
+  const hStatusClass = s => ({'已完成':'st-done','進行中':'st-doing','待確認':'st-wait','暫停':'st-pause'}[s]||'st-todo');
+  const historyCard = (h, index, opts={}) => `
+    <details class="hist-item" data-id="${escapeHtml(h.id||'')}"${opts.open?' open':''}>
+      <summary class="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-1.5">
+        <span class="hist-arrow">▶</span>
+        <span class="text-xs font-semibold text-slate-700 whitespace-nowrap">${escapeHtml(h.date||'—')}</span>
+        <span class="status-pill ${hStatusClass(h.status)}" style="font-size:.65rem">${escapeHtml(h.status||'')}</span>
+        <span class="text-xs font-semibold text-slate-600">${escapeHtml(h.title||'處理紀錄')}</span>
+        <span class="hist-preview hidden sm:block text-xs text-slate-400 truncate flex-1 min-w-0">${escapeHtml((h.note||'').replace(/\s+/g,' '))}</span>
+        <span class="ml-auto text-xs font-semibold text-indigo-700 whitespace-nowrap">${fmtH(h.hours)} h</span>
+        ${opts.removable?`<button type="button" data-remove-history="${index}" class="text-red-600 text-xs font-semibold">移除</button>`:''}
+      </summary>
+      <div class="detail-content px-4 pb-3 pt-2 text-sm text-slate-700 border-t border-slate-200">${h.noteHtml?richHtml(h.noteHtml):`<div class="whitespace-pre-wrap">${escapeHtml(h.note)}</div>`}</div>
+    </details>`;
+
+  function openDetail(id) {
+    const t=task(id); if(!t) return;
+    activeDetailId=id; const e=eff(t), wm=wbsMap();
+    $('detailSub').textContent = `${project()?.name||''}｜編號 ${wm[id]||''}｜${({task:'任務',phase:'階段',milestone:'里程碑'})[t.type]}`;
+    $('detailTitle').textContent = t.name;
+    const parent = t.parentId ? task(t.parentId) : null;
+    const fields=[['狀態',statusText(t)],['優先級',t.priority],['負責人',t.owner],['所屬階段',parent?.name],
+      ['開始日',e.start],['結束日',t.type==='milestone'?'—':e.end],['工期',durText(t)],['進度',e.progress+'%'],
+      ['總工時(h)',fmtH(sumHours(t.history))],['最後更新',(t.updatedAt||'').slice(0,10)]];
+    const deps=(t.deps||[]).map(task).filter(Boolean);
+    const succ=state.tasks.filter(x=>(x.deps||[]).includes(id));
+    const depLink = x => `<button data-goto="${x.id}" class="inline-flex mr-1 mb-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-indigo-100 text-xs">${wm[x.id]||''} ${escapeHtml(x.name)}</button>`;
+    const hs=sortedHistory(t.history);
+    $('detailBody').innerHTML=`
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mb-3">${fields.map(([k,v])=>`<div class="bg-slate-50 rounded-md px-2 py-1"><p class="text-[10px] text-slate-500">${k}</p><p class="font-medium text-xs mt-0.5 break-words">${escapeHtml(v||'—')}</p></div>`).join('')}</div>
+      <div class="grid md:grid-cols-2 gap-2 mb-3 text-xs"><div><p class="font-semibold text-slate-500 mb-1">前置任務</p>${deps.map(depLink).join('')||'<span class="text-slate-400">無</span>'}</div>
+      <div><p class="font-semibold text-slate-500 mb-1">後續任務</p>${succ.map(depLink).join('')||'<span class="text-slate-400">無</span>'}</div></div>
+      ${isParent(t)?`<div class="mb-3"><p class="font-semibold text-xs text-slate-500 mb-1">子任務</p>${kidsOf(id).map(depLink).join('')}</div>`:''}
+      <section class="mb-4"><h3 class="font-semibold text-sm text-slate-600 mb-1">詳細說明</h3><div class="detail-content border border-slate-200 rounded-xl p-3 max-h-[50vh] overflow-y-auto">${t.descriptionHtml&&textFromHtml(t.descriptionHtml)||/<img/i.test(t.descriptionHtml||'')?richHtml(t.descriptionHtml):'<p class="text-slate-400 text-sm">尚無詳細說明</p>'}</div></section>
+      <section><h3 class="font-semibold text-sm text-slate-600 mb-2">工作處理紀錄（${hs.length} 筆・共 ${fmtH(sumHours(t.history))} h）</h3><div class="space-y-1.5">${hs.map(({h,i},n)=>historyCard(h,i,{open:n===0})).join('')||'<p class="text-sm text-slate-400">尚無處理紀錄</p>'}</div></section>`;
+    $('detailBody').querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>openDetail(b.dataset.goto)));
+    showModal('detailModal');
+    if (view==='gantt') renderGantt();
+  }
+
+  /* ---------- 編輯 ---------- */
+  function renderSwatches(boxId, cur, onPick) {
+    $(boxId).innerHTML = COLORS.map(c=>`<span class="swatch ${c===cur?'on':''}" data-c="${c}" style="background:${c}"></span>`).join('');
+    $(boxId).querySelectorAll('.swatch').forEach(s=>s.addEventListener('click',()=>{ onPick(s.dataset.c); renderSwatches(boxId, s.dataset.c, onPick); }));
+  }
+  function fillParentOptions(selfId, cur) {
+    const phases=projectTasks().filter(t=>t.type==='phase' && t.id!==selfId && !t.parentId);
+    $('tParent').innerHTML='<option value="">（無，最上層）</option>'+phases.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    $('tParent').value = phases.some(p=>p.id===cur) ? cur : '';
+  }
+  function fillDeps(selfId, cur) {
+    const wm=wbsMap(); const excluded=new Set([selfId, ...kidsOf(selfId).map(k=>k.id)]);
+    const list=buildRows(true).map(r=>r.t).filter(t=>!excluded.has(t.id));
+    $('depBox').innerHTML = list.length ? list.map(t=>`<label class="flex items-center gap-1.5 py-0.5"><input type="checkbox" value="${t.id}" ${cur.includes(t.id)?'checked':''}><span class="text-slate-400 w-8">${wm[t.id]}</span>${t.type==='milestone'?'◆ ':''}${escapeHtml(t.name)}<span class="text-slate-400 ml-auto">${eff(t).end}</span></label>`).join('') : '<span class="text-slate-400">尚無其他任務</span>';
+  }
+  function syncTypeUI() {
+    $('tDurLbl').textContent = formCal().work ? '工期(工作天)' : '工期(日曆天)';
+    const type=$('tType').value, id=$('editId').value, t=id&&task(id), par=t && type==='phase' && kidsOf(id).length>0;
+    $('endWrap').classList.toggle('hidden', type==='milestone');
+    $('durWrap').classList.toggle('hidden', type==='milestone');
+    $('tParent').disabled = type==='phase' && par;
+    ['tStart','tEnd','tDur','tProg'].forEach(k=>$(k).disabled=!!par);
+    $('phaseNote').classList.toggle('hidden', !par);
+    if (par) { const e=eff(t); $('tStart').value=e.start; $('tEnd').value=e.end; $('tDur').value=workDays(e.start,e.end,tCal(t)); $('tProg').value=e.progress; $('tProgVal').textContent=e.progress+'%'; }
+    updateSuggest();
+  }
+
+  /* ---------- 建議開始日 ----------
+     1) 有勾前置任務：最晚完成的前置任務之後的下一個工作日
+     2) 沒有前置：同一層「前一項」（新增時為同一層最後一項）之後的下一個工作日；階段會以子任務彙總的結束日計算
+     3) 子任務是該階段第一項：階段的開始日
+     里程碑：與參考項目的結束日同一天；接在里程碑之後的任務可同日開始 */
+  function suggestStart() {
+    const C=formCal(), type=$('tType').value, pid = type==='phase' ? '' : $('tParent').value, selfId=$('editId').value;
+    const latest = list => list.reduce((b,t)=>!b || eff(t).end>eff(b).end ? t : b, null);
+    const deps=[...$('depBox').querySelectorAll('input:checked')].map(i=>task(i.value)).filter(Boolean);
+    let ref, why;
+    if (deps.length) { ref=latest(deps); why='最晚完成的前置任務'; }
+    else {
+      const self=selfId && task(selfId), idx=self ? state.tasks.indexOf(self) : Infinity;
+      const level=projectTasks().filter(t=>t.id!==selfId && (!selfId || t.parentId!==selfId) && (t.parentId||'')===pid && state.tasks.indexOf(t)<idx);
+      ref=latest(level); why = pid ? '同階段的前一項' : (type==='phase' ? '前一階段／項目' : '前一項');
+      if (!ref && pid) { const ph=task(pid); return { date:nextWork(eff(ph).start,C), text:`階段「${ph.name}」的第一項，從階段開始日起` }; }
+    }
+    if (!ref) return { date:nextWork(today(),C), text:'尚無其他項目，從今天（或下一個工作日）起' };
+    const e=eff(ref).end, same = type==='milestone' || ref.type==='milestone';
+    return { date: same ? nextWork(e,C) : nextWork(addDays(e,1),C), text:`接在${why}「${ref.name}」之後（${e} 結束）` };
+  }
+  function updateSuggest() {
+    const id=$('editId').value, t=id&&task(id), par=t && $('tType').value==='phase' && kidsOf(id).length>0;
+    $('sugRow').classList.toggle('hidden', !!par);
+    if (par) return;
+    const s=suggestStart(); $('sugDate').textContent=s.date; $('sugText').textContent=s.text;
+    $('sugApply').classList.toggle('hidden', $('tStart').value===s.date);
+  }
+  function applySuggest() {
+    const s=suggestStart(), C=formCal(), dur=+$('tDur').value||5;
+    $('tStart').value=s.date; $('tEnd').value = $('tType').value==='milestone' ? s.date : addWork(s.date,dur,C);
+    updateSuggest();
+  }
+  function openNew(type='task', parentId='') {
+    if (!curPid) { openProject(true); return; }
+    $('taskForm').reset(); $('editId').value='';
+    $('formTitle').textContent = ({task:'新增任務',phase:'新增階段',milestone:'新增里程碑'})[type];
+    $('tType').value=type; fillParentOptions('', parentId);
+    $('tStatus').value='未開始'; $('tPriority').value='中';
+    $('tDur').value=type==='milestone'?1:5;
+    $('tProg').value=0; $('tProgVal').textContent='0%';
+    selColor=''; renderSwatches('swatches','',c=>selColor=c);
+    fillDeps('', []);
+    quill.setContents([]); draftHistory=[]; renderHistoryDraft(); $('hDate').value=today(); historyQuill.setContents([]);
+    $('deleteTaskBtn').classList.add('hidden');
+    syncTypeUI(); applySuggest(); showModal('editModal'); setTimeout(()=>$('tName').focus(),50);
+  }
+  function openEdit(id) {
+    const t=task(id); if(!t) return;
+    closeModal('detailModal');
+    $('taskForm').reset(); $('editId').value=id; $('formTitle').textContent='編輯：'+t.name;
+    $('tName').value=t.name; $('tType').value=t.type; fillParentOptions(id, t.parentId||'');
+    $('tStatus').value=STATUSES.includes(t.status)?t.status:'未開始'; $('tPriority').value=t.priority||'中'; $('tOwner').value=t.owner||'';
+    $('tStart').value=t.start; $('tEnd').value=t.end||t.start; $('tDur').value=workDays(t.start,t.end||t.start,tCal(t));
+    $('tProg').value=t.progress||0; $('tProgVal').textContent=(t.progress||0)+'%';
+    selColor=t.color||''; renderSwatches('swatches',selColor,c=>selColor=c);
+    fillDeps(id, t.deps||[]);
+    quill.root.innerHTML=safeHtml(t.descriptionHtml||'');
+    draftHistory=(t.history||[]).map(h=>({...h})); renderHistoryDraft(); $('hDate').value=today(); historyQuill.setContents([]);
+    $('deleteTaskBtn').classList.remove('hidden');
+    syncTypeUI(); showModal('editModal');
+  }
+  $('tType').addEventListener('change', ()=>{ syncTypeUI(); if(!$('editId').value) applySuggest(); });
+  $('tParent').addEventListener('change', ()=>{ if(!$('editId').value) applySuggest(); else updateSuggest(); });
+  $('depBox').addEventListener('change', updateSuggest);
+  $('tStart').addEventListener('change', updateSuggest);
+  $('sugApply').addEventListener('click', applySuggest);
+  $('tStart').addEventListener('change', ()=>{ if(!isDate($('tStart').value)) return; $('tEnd').value=addWork($('tStart').value,+$('tDur').value||1,formCal()); });
+  $('tEnd').addEventListener('change', ()=>{ if($('tEnd').value<$('tStart').value) $('tEnd').value=$('tStart').value; $('tDur').value=workDays($('tStart').value,$('tEnd').value,formCal()); });
+  $('tDur').addEventListener('input', ()=>{ if(isDate($('tStart').value)) $('tEnd').value=addWork($('tStart').value,+$('tDur').value||1,formCal()); });
+  $('tProg').addEventListener('input', ()=>$('tProgVal').textContent=$('tProg').value+'%');
+
+  async function saveTask(ev) {
+    ev.preventDefault();
+    const name=$('tName').value.trim(); if(!name) return showToast('請輸入名稱');
+    if (!isDate($('tStart').value)) return showToast('請輸入開始日');
+    const id=$('editId').value||makeId(), existing=task(id), type=$('tType').value;
+    let status=$('tStatus').value, progress=+$('tProg').value;
+    if (status==='已完成') progress=100; else if (progress>=100) status='已完成';
+    if (status==='未開始' && progress>0 && progress<100) status='進行中';
+    const fc=formCal(), rawStart=$('tStart').value, start=nextWork(rawStart,fc);
+    let end = type==='milestone' ? start : ($('tEnd').value>=start?$('tEnd').value:start);
+    if (type!=='milestone') { const pe=prevWork(end,fc); end = pe>=start ? pe : start; }
+    if (start!==rawStart) alert(`開始日 ${rawStart} 為非工作日，已自動調整為 ${start}。`);
+    const t = {
+      id, projectId: existing?.projectId || curPid, name, type,
+      parentId: type==='phase' ? '' : $('tParent').value,
+      status, priority:$('tPriority').value, owner:$('tOwner').value.trim(),
+      start, end, progress, color:selColor,
+      deps:[...$('depBox').querySelectorAll('input:checked')].map(i=>i.value),
+      descriptionHtml:safeHtml(quill.root.innerHTML),
+      history:draftHistory, totalHours:sumHours(draftHistory),
+      createdAt: existing?.createdAt || new Date().toISOString(), updatedAt:new Date().toISOString()
+    };
+    if (existing && existing.type==='phase' && type!=='phase') kidsOf(id).forEach(k=>k.parentId='');
+    if (existing) state.tasks[state.tasks.indexOf(existing)]=t;
+    else {
+      // 插入到所屬階段最後一個子任務之後
+      if (t.parentId) { const last=[...state.tasks].reverse().find(x=>x.parentId===t.parentId) || task(t.parentId); state.tasks.splice(state.tasks.indexOf(last)+1,0,t); }
+      else state.tasks.push(t);
+    }
+    markDirty(); closeModal('editModal'); render();
+    try { await exportJson(); } catch(err) { showToast('項目已更新，但 JSON 儲存失敗：'+err.message); }
+  }
+
+  function deleteTask(id) {
+    const t=task(id); if(!t) return;
+    const kids=kidsOf(id);
+    if (!confirm(`確定刪除「${t.name}」${kids.length?`及其 ${kids.length} 個子任務`:''}？`)) return;
+    const rm=new Set([id, ...kids.map(k=>k.id)]);
+    state.tasks=state.tasks.filter(x=>!rm.has(x.id));
+    state.tasks.forEach(x=>{ if(x.deps) x.deps=x.deps.filter(d=>!rm.has(d)); });
+    closeModal('editModal'); closeModal('detailModal');
+    markDirty(); render(); autoSave(true); showToast('已刪除');
+  }
+  $('deleteTaskBtn').addEventListener('click', ()=>deleteTask($('editId').value));
+
+  /* ---------- 處理紀錄 ---------- */
+  function renderHistoryDraft(openId) {
+    const list=$('historyDraftList');
+    const openIds=new Set([...list.querySelectorAll('details[open]')].map(d=>d.dataset.id)); if(openId) openIds.add(openId);
+    list.innerHTML = draftHistory.length ? sortedHistory(draftHistory).map(({h,i})=>historyCard(h,i,{open:openIds.has(h.id),removable:true})).join('') : '<p class="text-xs text-slate-400 px-1 py-2">尚無處理紀錄</p>';
+    $('totalHours').textContent=fmtH(sumHours(draftHistory));
+    $('historyTotalNote').textContent=`合計 ${fmtH(sumHours(draftHistory))} h（共 ${draftHistory.length} 筆）`;
+    list.querySelectorAll('[data-remove-history]').forEach(b=>b.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); draftHistory.splice(+b.dataset.removeHistory,1); renderHistoryDraft(); }));
+  }
+  $('addHistoryBtn').addEventListener('click', ()=>{
+    const note=historyQuill.getText().trim(), hasImg=!!historyQuill.root.querySelector('img');
+    if (!note && !hasImg) { showToast('請先輸入處理內容'); historyQuill.focus(); return; }
+    draftHistory.unshift({ id:makeId(), date:$('hDate').value||today(), status:$('hStatus').value, title:$('hTitle').value.trim(),
+      note:note||'（圖片）', noteHtml:safeHtml(historyQuill.root.innerHTML), hours:Math.max(0,Math.round((parseFloat($('hHours').value)||0)*100)/100), createdAt:new Date().toISOString() });
+    $('hTitle').value=''; $('hHours').value=''; historyQuill.setContents([]);
+    renderHistoryDraft(draftHistory[0].id); showToast('已加入處理紀錄（儲存項目後生效）');
+  });
+
+  /* ---------- 專案 ---------- */
+  function openProject(isNew) {
+    const p = isNew ? null : project();
+    $('projTitle').textContent = p ? '專案設定' : '新增專案';
+    $('pId').value=p?.id||''; $('pName').value=p?.name||''; $('pOwner').value=p?.owner||''; $('pDesc').value=p?.description||'';
+    $('pMode').value=p?.calendarMode||'work'; $('pHol').value=fmtDays(p?.holidays); $('pMk').value=fmtDays(p?.makeupDays); previewDays('pHol'); previewDays('pMk');
+    selPColor=p?.color||COLORS[state.projects.length%COLORS.length]; renderSwatches('pSwatches',selPColor,c=>selPColor=c);
+    $('projDeleteBtn').classList.toggle('hidden', !p);
+    showModal('projModal'); setTimeout(()=>$('pName').focus(),50);
+  }
+  $('projForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const H=parseDays($('pHol').value), M=parseDays($('pMk').value), bad=[...H.bad, ...M.bad];
+    if (bad.length && !confirm(`以下 ${bad.length} 行有問題，將不會儲存：\n\n${bad.slice(0,10).join('\n')}${bad.length>10?'\n…':''}\n\n按「確定」只儲存可辨識的日期；按「取消」返回修改。`)) return;
+    const id=$('pId').value, data={ name:$('pName').value.trim(), owner:$('pOwner').value.trim(), description:$('pDesc').value, color:selPColor,
+      calendarMode:$('pMode').value, holidays:H.list, makeupDays:M.list };
+    if (!data.name) return;
+    if (id) Object.assign(state.projects.find(p=>p.id===id), data);
+    else { const p={ id:'P'+makeId().slice(1), createdAt:new Date().toISOString(), ...data }; state.projects.push(p); curPid=p.id; needScrollToday=true; }
+    closeModal('projModal'); markDirty(); render();
+    try { await exportJson(); } catch(err) { showToast('JSON 儲存失敗：'+err.message); }
+    showToast(`專案已儲存：國定假日 ${H.list.length} 天、補班日 ${M.list.length} 天`);
+  });
+  $('pHol').addEventListener('input',()=>previewDays('pHol'));
+  $('pMk').addEventListener('input',()=>previewDays('pMk'));
+  $('projDeleteBtn').addEventListener('click', ()=>{
+    const p=project(); if(!p) return;
+    const n=projectTasks().length;
+    if (!confirm(`確定刪除專案「${p.name}」及其 ${n} 個任務？`)) return;
+    state.tasks=state.tasks.filter(t=>t.projectId!==p.id); state.projects=state.projects.filter(x=>x.id!==p.id);
+    curPid=state.projects[0]?.id||null; closeModal('projModal'); markDirty(); render(); autoSave(true);
+  });
+
+  /* ---------- 範例 ---------- */
+  function loadSample() {
+    const pid='P'+makeId().slice(1), d0=addDays(today(),-14);
+    state.projects.push({ id:pid, name:'SAP 系統升級專案（範例）', owner:'專案經理', color:'#6366f1', description:'示範用專案，可直接修改或刪除。', createdAt:new Date().toISOString(), calendarMode:'work', holidays:[], makeupDays:[] });
+    calCache={}; const SC=cal(pid);
+    const mk=(name,type,parent,off,dur,owner,prog,status,deps=[],color='')=>{ const id=makeId()+Math.random().toString(36).slice(2,4); const s=nextWork(addDays(d0,off),SC);
+      state.tasks.push({ id, projectId:pid, name, type, parentId:parent, status, priority:'中', owner, start:s, end:type==='milestone'?s:addWork(s,dur,SC), progress:prog, color, deps, descriptionHtml:'', history:[], createdAt:new Date().toISOString(), updatedAt:'' }); return id; };
+    const p1=mk('需求分析','phase','',0,1,'',0,'進行中');
+    const a=mk('現行流程訪談','task',p1,0,5,'系統分析師',100,'已完成');
+    const b=mk('需求規格書撰寫','task',p1,5,6,'系統分析師',100,'已完成',[a]);
+    const m1=mk('需求確認會議','milestone','',11,1,'PM',100,'已完成',[b],'#f59e0b');
+    const p2=mk('開發','phase','',12,1,'',0,'進行中');
+    const c=mk('ABAP 客製程式調整','task',p2,12,10,'工程師 A',60,'進行中',[m1]);
+    const dd=mk('RFC／API 介面開發','task',p2,14,9,'工程師 B',40,'進行中',[m1],'#0ea5e9');
+    const e=mk('報表調整','task',p2,16,6,'工程師 A',20,'進行中',[m1]);
+    const p3=mk('測試','phase','',23,1,'',0,'未開始');
+    const f=mk('QAS 整合測試','task',p3,23,7,'工程師 B',0,'未開始',[c,dd],'#14b8a6');
+    const g=mk('UAT 使用者驗收','task',p3,30,5,'使用者',0,'未開始',[f],'#14b8a6');
+    mk('PRD 上線','milestone','',35,1,'PM',0,'未開始',[g,e],'#ef4444');
+    curPid=pid; runSchedule(); needScrollToday=true; markDirty(); render(); autoSave(true);
+    showToast('已載入範例專案（已授權資料夾時會自動儲存，否則請按「儲存 JSON 備份」）');
+  }
+
+  /* ---------- 資料夾 / IndexedDB / JSON ---------- */
+  const idb = {
+    open(){ return new Promise((res,rej)=>{ const r=indexedDB.open('gantt-pm-v1',1); r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); },
+    async get(k){ const db=await this.open(); return new Promise((res,rej)=>{ const r=db.transaction('kv').objectStore('kv').get(k); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); },
+    async set(k,v){ const db=await this.open(); return new Promise((res,rej)=>{ const tx=db.transaction('kv','readwrite'); tx.objectStore('kv').put(v,k); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+  };
+  function updateSaveTarget(note) {
+    if (!FS_SUPPORTED) { $('saveTarget').textContent='此瀏覽器不支援資料夾寫入，儲存時將改為一般下載（建議使用 Chrome／Edge）。'; $('folderBtn').classList.add('hidden'); return; }
+    $('saveTarget').textContent = dirHandle ? `儲存位置：${dirHandle.name===DB_FOLDER?dirHandle.name:dirHandle.name+' / '+DB_FOLDER}${note?'（'+note+'）':''}` : `尚未選擇資料夾：請點選「選擇儲存資料夾」，選擇此 HTML 所在資料夾。${note?'（'+note+'）':''}`;
+  }
+  async function ensurePermission(h){ const o={mode:'readwrite'}; if((await h.queryPermission(o))==='granted') return true; return (await h.requestPermission(o))==='granted'; }
+  async function pickFolder(){ dirHandle=await window.showDirectoryPicker({id:'gantt-pm', mode:'readwrite'}); try{ await idb.set('dirHandle',dirHandle);}catch(e){} updateSaveTarget(); return dirHandle; }
+  async function getDbDir(create){ return dirHandle.name===DB_FOLDER ? dirHandle : dirHandle.getDirectoryHandle(DB_FOLDER, create?{create:true}:undefined); }
+  async function listJson(dbDir){
+    const files=[];
+    for await (const [name,h] of dbDir.entries()) { if(h.kind!=='file' || !name.toLowerCase().endsWith('.json')) continue; const f=await h.getFile(); files.push({name,handle:h,lastModified:f.lastModified}); }
+    files.sort((a,b)=>(b.lastModified-a.lastModified)||b.name.localeCompare(a.name));
+    return files;
+  }
+  async function cleanupOld(dbDir, keep=5){
+    const old=(await listJson(dbDir)).filter(f=>f.name.startsWith(FILE_PREFIX)).slice(keep);   // 只清理本程式產生的備份
+    for (const f of old) await dbDir.removeEntry(f.name);
+    return old.length;
+  }
+  async function loadLatest(){
+    if (!dirHandle) return false;
+    try {
+      if ((await dirHandle.queryPermission({mode:'read'}))!=='granted') { updateSaveTarget('請重新選擇資料夾以授權'); return false; }
+      const all=await listJson(await getDbDir(false));
+      const files = all.filter(f=>f.name.startsWith(FILE_PREFIX)).length ? all.filter(f=>f.name.startsWith(FILE_PREFIX)) : all;
+      if (!files.length) { updateSaveTarget('db_data 內沒有 JSON 備份'); return false; }
+      const raw=JSON.parse(await (await files[0].handle.getFile()).text());
+      state=normalize(raw); curPid=state.projects[0]?.id||null; needScrollToday=true; markClean(); render();
+      updateSaveTarget(`已自動載入：${files[0].name}`); showToast(`已載入最新備份：${files[0].name}`);
+      return true;
+    } catch(err) {
+      if (err.name==='NotFoundError') { updateSaveTarget('找不到 db_data 資料夾，首次儲存時會自動建立'); return false; }
+      console.error(err); updateSaveTarget('自動讀取失敗：'+err.message); return false;
+    }
+  }
+  async function restoreFolder(){
+    if (!FS_SUPPORTED) { updateSaveTarget(); return; }
+    try { const saved=await idb.get('dirHandle'); if (saved) { dirHandle=saved;
+      if ((await dirHandle.queryPermission({mode:'read'}))==='granted') await loadLatest(); else updateSaveTarget('請點選「選擇儲存資料夾」重新授權');
+      return; } } catch(e) { console.error(e); }
+    updateSaveTarget();
+  }
+  async function writeJson(text, fileName){
+    if (!dirHandle) await pickFolder(); else if (!(await ensurePermission(dirHandle))) await pickFolder();
+    if (!(await ensurePermission(dirHandle))) throw new Error('未取得資料夾寫入權限');
+    const dbDir=await getDbDir(true);
+    const base=fileName.replace(/\.json$/i,''); let final=fileName, n=1;
+    while (true) { try { await dbDir.getFileHandle(final); final=`${base}_${++n}.json`; } catch(e){ if(e.name==='NotFoundError') break; throw e; } }
+    const fh=await dbDir.getFileHandle(final,{create:true}); const w=await fh.createWritable(); await w.write(text); await w.close();
+    await cleanupOld(dbDir,5);
+    return `${dbDir.name}/${final}`;
+  }
+  function payload(){
+    // 將階段的彙總日期寫回，方便其他工具讀取
+    state.tasks.forEach(t=>{ if(isParent(t)){ const e=eff(t); t.start=e.start; t.end=e.end; t.progress=e.progress; } t.totalHours=sumHours(t.history); });
+    return JSON.stringify({ app:'Project Gantt', schemaVersion:1, exportedAt:new Date().toISOString(), projectCount:state.projects.length, taskCount:state.tasks.length, projects:state.projects, tasks:state.tasks }, null, 2);
+  }
+  function stamp(){ const d=new Date(); return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
+  async function exportJson(){
+    const text=payload(), fileName=`${FILE_PREFIX}${stamp()}.json`;
+    $('exportBtn').disabled=true;
+    try {
+      if (FS_SUPPORTED) {
+        try { const saved=await writeJson(text,fileName); markClean(); updateSaveTarget('最近儲存：'+saved.split('/').pop()); showToast(`已儲存至 ${saved}`); return; }
+        catch(err){ if(err.name==='AbortError'){ showToast('已取消選擇資料夾，未儲存'); return; } console.error(err);
+          alert(`無法寫入 ${DB_FOLDER}：${err.message}\n\n將改用一般下載方式保存。`); }
+      }
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'application/json'})); a.download=fileName; a.click(); URL.revokeObjectURL(a.href);
+      markClean(); showToast('已下載 JSON（一般下載）');
+    } finally { $('exportBtn').disabled=false; }
+  }
+  // 已授權資料夾時自動儲存（不跳出選擇視窗），拖曳調整採延遲合併
+  let autoTimer=null;
+  function autoSave(immediate){
+    clearTimeout(autoTimer);
+    autoTimer=setTimeout(async ()=>{
+      if (!FS_SUPPORTED || !dirHandle) return;
+      try { if ((await dirHandle.queryPermission({mode:'readwrite'}))!=='granted') return; await exportJson(); } catch(e){ console.error(e); }
+    }, immediate ? 50 : 1500);
+  }
+
+  function normalize(raw){
+    // 相容：工作管理清單 JSON（items）→ 轉為一個專案
+    if (raw && Array.isArray(raw.items) && !Array.isArray(raw.tasks)) {
+      const pid='P'+makeId().slice(1);
+      return { projects:[{id:pid,name:'匯入的工作清單',owner:'',color:COLORS[0],description:'由工作管理清單 JSON 轉入',createdAt:new Date().toISOString(),calendarMode:'work',holidays:[],makeupDays:[]}],
+        tasks: raw.items.map(x=>{ const s=isDate(x.createdDate)?x.createdDate:today(); const e=isDate(x.dueDate)&&x.dueDate>=s?x.dueDate:s;
+          const st={'已完成':'已完成','處理中':'進行中','暫停':'暫停','尚未開始':'未開始'}[x.status]||'待確認';
+          return fixTask({ ...x, id:x.id, projectId:pid, type:'task', start:s, end:e, status:st, progress:st==='已完成'?100:0 }); }) };
+    }
+    if (!raw || !Array.isArray(raw.projects) || !Array.isArray(raw.tasks)) throw new Error('JSON 格式不正確：需含 projects 與 tasks 陣列');
+    const projects=raw.projects.map(p=>({ id:String(p.id||'P'+makeId()), name:String(p.name||'未命名專案'), owner:String(p.owner||''), color:COLORS.includes(p.color)?p.color:(/^#[0-9a-f]{6}$/i.test(p.color)?p.color:COLORS[0]), description:String(p.description||''), createdAt:String(p.createdAt||''),
+      calendarMode:p.calendarMode==='calendar'?'calendar':'work', holidays:cleanDays(p.holidays), makeupDays:cleanDays(p.makeupDays) }));
+    const pids=new Set(projects.map(p=>p.id));
+    return { projects, tasks: raw.tasks.filter(t=>t && pids.has(t.projectId)).map(fixTask) };
+  }
+  function fixTask(x){
+    const start=isDate(x.start)?x.start:today();
+    const type=['task','phase','milestone'].includes(x.type)?x.type:'task';
+    return { id:String(x.id||makeId()), projectId:String(x.projectId), name:String(x.name||'未命名'), type, parentId:String(x.parentId||''),
+      status:STATUSES.includes(x.status)?x.status:'未開始', priority:String(x.priority||'中'), owner:String(x.owner||''),
+      start, end: type==='milestone'?start:(isDate(x.end)&&x.end>=start?x.end:start), progress:Math.min(100,Math.max(0,Number(x.progress)||0)),
+      color:/^#[0-9a-f]{6}$/i.test(x.color||'')?x.color:'', deps:Array.isArray(x.deps)?x.deps.map(String):[],
+      descriptionHtml:safeHtml(x.descriptionHtml||''),
+      history:Array.isArray(x.history)?x.history.map(h=>({ id:String(h.id||makeId()), date:String(h.date||''), status:String(h.status||'進行中'), title:String(h.title||''), note:String(h.note||''), noteHtml:safeHtml(h.noteHtml||''), hours:Math.max(0,Number(h.hours)||0), createdAt:String(h.createdAt||'') })):[],
+      createdAt:String(x.createdAt||new Date().toISOString()), updatedAt:String(x.updatedAt||'') };
+  }
+  async function importJson(file){
+    if (!file) return;
+    try {
+      const inc=normalize(JSON.parse(await file.text()));
+      if (state.tasks.length) {
+        const merge = confirm(`檔案含 ${inc.projects.length} 個專案、${inc.tasks.length} 個任務。\n\n按「確定」＝合併加入目前資料\n按「取消」＝改為取代目前資料`);
+        if (merge) { const pids=new Set(state.projects.map(p=>p.id)); inc.projects.forEach(p=>{ if(!pids.has(p.id)) state.projects.push(p); });
+          const tids=new Set(state.tasks.map(t=>t.id)); inc.tasks.forEach(t=>{ if(!tids.has(t.id)) state.tasks.push(t); }); }
+        else { if (!confirm('確定取代目前所有資料？')) return; state=inc; }
+      } else state=inc;
+      curPid=inc.projects[0]?.id||state.projects[0]?.id||null; needScrollToday=true;
+      markDirty(); render(); showToast(`匯入完成，請按「儲存 JSON 備份」保存`);
+    } catch(err){ alert('匯入失敗：'+err.message); } finally { $('importFile').value=''; }
+  }
+
+  /* ---------- 匯出 Excel（ExcelJS，按下時才載入） ---------- */
+  function loadScript(src){ return new Promise((res,rej)=>{ const el=document.createElement('script'); el.src=src; el.onload=res; el.onerror=()=>rej(new Error('無法載入 Excel 元件，請確認網路連線')); document.head.appendChild(el); }); }
+  const argb = hex => 'FF'+String(hex||'#6366f1').slice(1).toUpperCase();
+  const tint = (hex,f=.72) => { const n=parseInt(String(hex||'#6366f1').slice(1),16); return 'FF'+[n>>16&255,n>>8&255,n&255].map(c=>Math.round(c+(255-c)*f).toString(16).padStart(2,'0')).join('').toUpperCase(); };
+  const fillOf = c => ({ type:'pattern', pattern:'solid', fgColor:{ argb:c } });
+  const xDate = d => d ? new Date(toUTC(d)) : null;
+  const ST_FILL = { '已完成':'FFDCFCE7','進行中':'FFDBEAFE','待確認':'FFFEF3C7','暫停':'FFE2E8F0','未開始':'FFF1F5F9' };
+
+  async function exportExcel(){
+    const p=project();
+    if (!p || !projectTasks().length) { showToast('目前專案沒有任務可匯出'); return; }
+    $('excelBtn').disabled=true; showToast('正在產生 Excel…');
+    try {
+      if (!window.ExcelJS) await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+      const C=cal(p.id), rows=buildRows(true,true), wm=wbsMap(), td=today();
+      const es=rows.map(r=>eff(r.t)); const pS=es.reduce((a,e)=>e.start<a?e.start:a, es[0].start), pE=es.reduce((a,e)=>e.end>a?e.end:a, es[0].end);
+      const leaf=projectTasks().filter(t=>!isParent(t)); let w=0,pp=0; leaf.forEach(t=>{ const e=eff(t), wt=Math.max(1,workDays(e.start,e.end,C)); w+=wt; pp+=wt*e.progress; });
+      const pct=w?Math.round(pp/w):0;
+      const info=`負責人：${p.owner||'—'}　計算方式：${C.work?'工作天':'日曆天'}　期間：${pS} ～ ${pE}（${C.work?workDays(pS,pE,C)+' 工作天／':''}${diffDays(pS,pE)+1} 日曆天）　整體進度：${pct}%　匯出時間：${td} ${new Date().toTimeString().slice(0,5)}`;
+      const typeName={task:'任務',phase:'階段',milestone:'里程碑'};
+      const thin={style:'thin',color:{argb:'FFE2E8F0'}}, box={top:thin,left:thin,bottom:thin,right:thin};
+      const headStyle = row => { row.eachCell(c=>{ c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill=fillOf('FF4F46E5'); c.alignment={vertical:'middle',horizontal:'center',wrapText:true}; c.border=box; }); row.height=22; };
+      const wb=new ExcelJS.Workbook(); wb.creator='專案甘特圖'; wb.created=new Date();
+
+      // ① 任務清單
+      const ws=wb.addWorksheet('任務清單',{views:[{state:'frozen',ySplit:4,xSplit:3}]});
+      const cols=[['編號',8],['類型',8],['名稱',36],['所屬階段',16],['狀態',12],['優先級',7],['負責人',12],['開始日',12],['結束日',12],[C.work?'工期(工作天)':'工期(日曆天)',11],['日曆天',8],['進度',8],['前置任務',16],['後續任務',16],['工時(h)',9],['最近處理',40],['詳細說明',50],['最後更新',12]];
+      ws.columns=cols.map(([,width])=>({width}));
+      ws.mergeCells(1,1,1,cols.length); ws.getCell(1,1).value=p.name; ws.getCell(1,1).font={bold:true,size:16};
+      ws.mergeCells(2,1,2,cols.length); ws.getCell(2,1).value=info; ws.getCell(2,1).font={color:{argb:'FF475569'}};
+      if (p.description) { ws.mergeCells(3,1,3,cols.length); ws.getCell(3,1).value='說明：'+p.description; ws.getCell(3,1).font={color:{argb:'FF64748B'},size:9}; }
+      headStyle(ws.getRow(4)); cols.forEach(([h],i)=>ws.getCell(4,i+1).value=h); headStyle(ws.getRow(4));
+      rows.forEach((r,i)=>{
+        const t=r.t, e=eff(t), h=latestHistory(t), ms=t.type==='milestone', par=isParent(t);
+        const succ=state.tasks.filter(x=>(x.deps||[]).includes(t.id));
+        const hrs = par ? sumHours(kidsOf(t.id).flatMap(k=>k.history||[]))+sumHours(t.history) : sumHours(t.history);
+        const row=ws.getRow(5+i);
+        row.values=[r.wbs, typeName[t.type], (r.level?'　　':'')+(ms?'◆ ':'')+t.name, t.parentId?(task(t.parentId)?.name||''):'', statusText(t), t.priority||'', t.owner||'',
+          xDate(e.start), ms?null:xDate(e.end), ms?null:workDays(e.start,e.end,C), ms?null:diffDays(e.start,e.end)+1, e.progress/100,
+          (t.deps||[]).map(id=>wm[id]).filter(Boolean).join(', '), succ.map(x=>wm[x.id]).filter(Boolean).join(', '), Math.round(hrs*100)/100,
+          h?`${h.date}｜${h.title||'處理紀錄'}｜${h.status}${h.hours?'｜'+fmtH(h.hours)+'h':''}\n${h.note}`.slice(0,1000):'',
+          textFromHtml(t.descriptionHtml).slice(0,30000), (t.updatedAt||t.createdAt||'').slice(0,10)];
+        row.eachCell({includeEmpty:true},(c,ci)=>{ c.border=box; c.alignment={vertical:'top',wrapText:[3,16,17].includes(ci)}; });
+        [8,9].forEach(ci=>row.getCell(ci).numFmt='yyyy-mm-dd'); row.getCell(12).numFmt='0%';
+        row.getCell(5).fill=fillOf(isLate(t)?'FFFEE2E2':(ST_FILL[t.status]||'FFF1F5F9'));
+        if (isLate(t)) { row.getCell(5).font={color:{argb:'FFB91C1C'},bold:true}; row.getCell(9).font={color:{argb:'FFB91C1C'},bold:true}; }
+        if (t.type==='phase') row.eachCell({includeEmpty:true},c=>{ c.font={...(c.font||{}),bold:true}; if(c.col!==5) c.fill=fillOf('FFF1F5F9'); });
+      });
+      ws.autoFilter={ from:{row:4,column:1}, to:{row:4+rows.length,column:cols.length} };
+
+      // ② 甘特圖
+      const g=wb.addWorksheet('甘特圖',{views:[{state:'frozen',xSplit:7,ySplit:5}]});
+      const gs=addDays(pS,-2), ge=addDays(pE,3), span=diffDays(gs,ge)+1, weekly=span>200;
+      const units=[]; if (weekly) { let x=addDays(gs,-((dow(gs)+6)%7)); while(x<=ge){ units.push({s:x,e:addDays(x,6)}); x=addDays(x,7); } } else for(let i=0;i<span;i++){ const d=addDays(gs,i); units.push({s:d,e:d}); }
+      const L=7, gcols=[['編號',7],['名稱',30],['負責人',10],['開始日',11],['結束日',11],[C.work?'工作天':'日曆天',7],['進度',6]];
+      g.columns=[...gcols.map(([,width])=>({width})), ...units.map(()=>({width:weekly?4.2:2.8}))];
+      g.mergeCells(1,1,1,L+Math.min(units.length,30)); g.getCell(1,1).value=`${p.name}　甘特圖（${weekly?'每格一週':'每格一天'}）`; g.getCell(1,1).font={bold:true,size:14};
+      g.mergeCells(2,1,2,L+Math.min(units.length,60)); g.getCell(2,1).value='圖例：深色＝已完成　淺色＝未完成　◆＝里程碑　深灰＝階段　灰底＝週末　紅底＝國定假日　青底＝補班日　紅色欄＝今天'; g.getCell(2,1).font={size:9,color:{argb:'FF64748B'}};
+      gcols.forEach(([h],i)=>{ g.mergeCells(3,i+1,5,i+1); const c=g.getCell(3,i+1); c.value=h; });
+      let ms0=0; units.forEach((u,i)=>{ const key=u.s.slice(0,7), nextKey=units[i+1]?.s.slice(0,7);
+        if (nextKey!==key) { g.mergeCells(3,L+1+ms0,3,L+1+i); const c=g.getCell(3,L+1+ms0); c.value=`${+key.slice(0,4)}年${+key.slice(5)}月`; ms0=i+1; } });
+      const WKC='日一二三四五六';
+      units.forEach((u,i)=>{ const c4=g.getCell(4,L+1+i), c5=g.getCell(5,L+1+i);
+        c4.value= weekly ? `${+u.s.slice(5,7)}/${+u.s.slice(8)}` : +u.s.slice(8); c5.value= weekly ? '' : (C.mk.has(u.s)?'班':(C.hol.has(u.s)?'假':WKC[dow(u.s)]));
+        if (weekly) c4.alignment={textRotation:90};
+        const isToday = td>=u.s && td<=u.e;
+        [c4,c5].forEach(c=>{ c.font={size:8,bold:isToday,color:{argb:isToday?'FFFFFFFF':'FF475569'}}; c.alignment={...(c.alignment||{}),horizontal:'center',vertical:'middle'};
+          c.fill=fillOf(isToday?'FFEF4444':(!weekly&&C.mk.has(u.s)?'FFECFEFF':(!weekly&&C.hol.has(u.s)?'FFFEE2E2':(!weekly&&offDay(u.s,C)?'FFE2E8F0':'FFF8FAFC')))); });
+      });
+      [3,4,5].forEach(rn=>g.getRow(rn).eachCell({includeEmpty:true},(c,ci)=>{ if(ci<=L || rn===3){ c.font={bold:true,size:9,color:{argb:'FF334155'}}; c.alignment={horizontal:'center',vertical:'middle'}; if(!c.fill) c.fill=fillOf('FFF1F5F9'); } c.border=box; }));
+      g.getRow(4).height = weekly ? 34 : 15;
+      rows.forEach((r,i)=>{
+        const t=r.t, e=eff(t), rn=6+i, row=g.getRow(rn), ms=t.type==='milestone', par=isParent(t), col=t.color||p.color||'#6366f1';
+        row.values=[r.wbs, (r.level?'　':'')+(ms?'◆ ':'')+t.name, t.owner||'', xDate(e.start), ms?null:xDate(e.end), ms?null:workDays(e.start,e.end,C), e.progress/100];
+        row.getCell(4).numFmt='mm/dd'; row.getCell(5).numFmt='mm/dd'; row.getCell(7).numFmt='0%';
+        for (let ci=1; ci<=L; ci++){ const c=row.getCell(ci); c.border=box; c.font={size:9,bold:t.type==='phase',color:{argb:isLate(t)?'FFB91C1C':'FF1E293B'}}; c.alignment={vertical:'middle'}; }
+        const doneUntil = addDays(e.start, Math.round((diffDays(e.start,e.end)+1)*e.progress/100)-1);
+        units.forEach((u,k)=>{
+          const c=row.getCell(L+1+k), inBar = u.e>=e.start && u.s<=e.end;
+          let f=null;
+          if (ms) { if (e.start>=u.s && e.start<=u.e) { c.value='◆'; c.font={color:{argb:argb(col)},bold:true,size:10}; c.alignment={horizontal:'center',vertical:'middle'}; } }
+          else if (inBar) f = par ? 'FF334155' : (u.s<=doneUntil ? argb(col) : tint(col));
+          if (!f && !weekly) { if (C.hol.has(u.s)&&!C.mk.has(u.s)) f='FFFEF2F2'; else if (offDay(u.s,C)) f='FFF1F5F9'; }
+          if (f) c.fill=fillOf(f);
+          if (td>=u.s && td<=u.e) c.border={left:{style:'thin',color:{argb:'FFEF4444'}},right:{style:'thin',color:{argb:'FFEF4444'}}};
+        });
+        row.height=16;
+      });
+      g.pageSetup={orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0};
+
+      // ③ 處理紀錄
+      const hs=wb.addWorksheet('處理紀錄',{views:[{state:'frozen',ySplit:1}]});
+      hs.columns=[{header:'任務編號',width:9},{header:'任務名稱',width:30},{header:'日期',width:12},{header:'處理狀態',width:10},{header:'紀錄標題',width:26},{header:'工時(h)',width:9},{header:'處理內容',width:70}];
+      headStyle(hs.getRow(1));
+      let hn=0;
+      rows.forEach(r=>sortedHistory(r.t.history).slice().reverse().forEach(({h})=>{
+        const row=hs.addRow([r.wbs, r.t.name, xDate(h.date), h.status, h.title||'', Number(h.hours)||0, (h.noteHtml?textFromHtml(h.noteHtml):h.note||'').slice(0,30000)]);
+        row.getCell(3).numFmt='yyyy-mm-dd'; row.eachCell(c=>{ c.border=box; c.alignment={vertical:'top',wrapText:c.col===7}; }); hn++;
+      }));
+      if (hn) { const tr=hs.addRow(['','合計','','','',{formula:`SUM(F2:F${hn+1})`},'']); tr.font={bold:true}; }
+      else hs.addRow(['','（尚無處理紀錄）']);
+
+      // ④ 假日設定
+      const hol=[...(p.holidays||[]).map(x=>({...x,k:'國定假日／休假'})), ...(p.makeupDays||[]).map(x=>({...x,k:'補班日'}))].sort((a,b)=>a.date.localeCompare(b.date));
+      const hw=wb.addWorksheet('假日設定');
+      hw.columns=[{header:'日期',width:12},{header:'星期',width:6},{header:'類型',width:16},{header:'名稱',width:30}];
+      headStyle(hw.getRow(1));
+      hol.forEach(x=>{ const row=hw.addRow([xDate(x.date), WKC[dow(x.date)], x.k, x.name]); row.getCell(1).numFmt='yyyy-mm-dd'; row.getCell(3).fill=fillOf(x.k==='補班日'?'FFECFEFF':'FFFEE2E2'); });
+      if (!hol.length) hw.addRow(['', '', '（未設定）', C.work?'工作天制：僅排除週六日':'日曆天制：不排除假日']);
+
+      const buf=await wb.xlsx.writeBuffer();
+      const fn=`${p.name.replace(/[\\/:*?"<>|]/g,'_')}_甘特圖_${stamp()}.xlsx`;
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})); a.download=fn; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+      showToast(`已匯出 Excel：${fn}`);
+    } catch(err) { console.error(err); alert('匯出 Excel 失敗：'+err.message); }
+    finally { $('excelBtn').disabled=false; }
+  }
+  $('excelBtn').addEventListener('click', exportExcel);
+
+  /* ---------- Quill 與圖片 ---------- */
+  async function compressImage(file){
+    try { const bm=await createImageBitmap(file); const sc=Math.min(1,1600/Math.max(bm.width,bm.height)); const c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(bm.width*sc)); c.height=Math.max(1,Math.round(bm.height*sc)); const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(bm,0,0,c.width,c.height); bm.close?.(); return c.toDataURL('image/jpeg',.78);
+    } catch(e){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); }); }
+  }
+  async function insertImages(q, files){ let i=(q.getSelection(true)||{index:q.getLength()-1}).index; for (const f of files){ q.insertEmbed(i,'image',await compressImage(f),'user'); i++; } q.setSelection(i,0,'silent'); }
+  function clipImages(cd){ const seen=new Set(), out=[]; const push=f=>{ if(!f||!f.type.startsWith('image/')) return; const k=`${f.type}|${f.size}|${f.lastModified}`; if(seen.has(k)) return; seen.add(k); out.push(f); };
+    [...(cd?.files||[])].forEach(push); [...(cd?.items||[])].forEach(it=>{ if(it.kind==='file') push(it.getAsFile()); }); return out; }
+  function createEditor(sel, ph, toolbar){
+    let q; q=new Quill(sel,{ theme:'snow', placeholder:ph, modules:{ toolbar:{ container:toolbar, handlers:{ image:()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.multiple=true; inp.onchange=()=>insertImages(q,[...inp.files]); inp.click(); } } } } });
+    let busy=false;
+    q.container.addEventListener('paste', e=>{ const imgs=clipImages(e.clipboardData); if(!imgs.length) return; e.preventDefault(); e.stopImmediatePropagation(); if(busy) return; busy=true; insertImages(q,imgs).catch(err=>showToast('貼上圖片失敗：'+err.message)).finally(()=>busy=false); }, true);
+    return q;
+  }
+
+  /* ---------- Modal ---------- */
+  function showModal(id){ $(id).classList.remove('hidden'); document.body.classList.add('overflow-hidden'); }
+  function closeModal(id){ $(id).classList.add('hidden'); if(['editModal','detailModal','projModal'].every(m=>$(m).classList.contains('hidden'))) document.body.classList.remove('overflow-hidden');
+    if (id==='detailModal' && activeDetailId) { activeDetailId=null; if(view==='gantt' && projectTasks().length) renderGantt(); } }
+  document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>closeModal(b.dataset.close)));
+  ['editModal','detailModal','projModal'].forEach(id=>$(id).addEventListener('mousedown',e=>{ if(e.target===$(id)) closeModal(id); }));
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') ['projModal','detailModal','editModal'].some(id=>{ if(!$(id).classList.contains('hidden')){ closeModal(id); return true; } }); });
+
+  /* ---------- 綁定 ---------- */
+  $('tStatus').innerHTML=STATUSES.map(s=>`<option>${s}</option>`).join('');
+  $('hStatus').innerHTML=STATUSES.map(s=>`<option>${s}</option>`).join('');
+  $('filterStatus').innerHTML='<option value="">全部狀態</option>'+STATUSES.map(s=>`<option>${s}</option>`).join('')+'<option value="逾期">逾期</option>';
+  $('taskForm').addEventListener('submit', saveTask);
+  $('newTaskBtn').addEventListener('click',()=>openNew('task'));
+  $('newPhaseBtn').addEventListener('click',()=>openNew('phase'));
+  $('newMsBtn').addEventListener('click',()=>openNew('milestone'));
+  $('projNewBtn').addEventListener('click',()=>openProject(true));
+  $('projEditBtn').addEventListener('click',()=>openProject(!project()));
+  $('welcomeNew').addEventListener('click',()=>openProject(true));
+  $('welcomeSample').addEventListener('click',loadSample);
+  $('sampleBtn').addEventListener('click',()=>{ if(state.projects.length && !confirm('將另外新增一個「SAP 系統升級專案（範例）」，不會影響現有專案。是否繼續？')) return; loadSample(); });
+  $('projectSelect').addEventListener('change',e=>{ curPid=e.target.value; needScrollToday=true; render(); });
+  $('detailEditBtn').addEventListener('click',()=>openEdit(activeDetailId));
+  $('viewSeg').addEventListener('click',e=>{ const b=e.target.closest('[data-view]'); if(!b) return; view=b.dataset.view; $('viewSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); if(view==='gantt') needScrollToday=true; render(); });
+  $('zoomSeg').addEventListener('click',e=>{ const b=e.target.closest('[data-zoom]'); if(!b) return; zoom=b.dataset.zoom; $('zoomSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); needScrollToday=true; render(); });
+  $('todayBtn').addEventListener('click',()=>{ if(view!=='gantt') $('viewSeg').querySelector('[data-view=gantt]').click(); scrollToToday(); });
+  $('expandAllBtn').addEventListener('click',()=>{ collapsed.clear(); render(); });
+  $('collapseAllBtn').addEventListener('click',()=>{ projectTasks().filter(t=>t.type==='phase').forEach(t=>collapsed.add(t.id)); render(); });
+  $('showDeps').addEventListener('change',render);
+  $('autoBtn').addEventListener('click',autoSchedule);
+  $('searchInput').addEventListener('input',render);
+  $('filterOwner').addEventListener('change',render);
+  $('filterStatus').addEventListener('change',render);
+  $('exportBtn').addEventListener('click',exportJson);
+  $('importBtn').addEventListener('click',()=>$('importFile').click());
+  $('importFile').addEventListener('change',e=>importJson(e.target.files[0]));
+  $('folderBtn').addEventListener('click', async ()=>{
+    try { await pickFolder(); const ok=await loadLatest(); if(!ok) showToast('資料夾設定完成，目前沒有可載入的備份'); }
+    catch(e){ if(e.name!=='AbortError') alert('無法選擇資料夾：'+e.message); }
+  });
+  let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(render,150); });
+  window.addEventListener('beforeunload',e=>{ if(dirty){ e.preventDefault(); e.returnValue=''; } });
+
+  quill = createEditor('#editor','說明任務目標、範圍、交付項目、注意事項……',[[{header:[1,2,3,false]}],['bold','italic','underline','strike'],[{color:[]},{background:[]}],[{list:'ordered'},{list:'bullet'}],[{indent:'-1'},{indent:'+1'}],['blockquote','code-block'],['link','image'],['clean']]);
+  historyQuill = createEditor('#historyEditor','記錄本次處理內容、結果、待確認事項……（可貼上截圖）',[[{header:[1,2,3,false]}],['bold','italic','underline'],[{color:[]},{background:[]}],[{list:'ordered'},{list:'bullet'}],['link','image'],['clean']]);
+  render(); restoreFolder();
+})();
+</script>
+</body>
+</html>
